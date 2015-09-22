@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"path/filepath"
+	"sync"
 
 	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
@@ -144,6 +145,7 @@ type AssetTemplate struct {
 	amaps  []AssetMap
 	Tmpl   *template.Template
 	Funcs  []template.FuncMap
+	ro     sync.Mutex
 }
 
 // NewAssetTemplate returns a new asset template
@@ -188,7 +190,9 @@ func (a *AssetTemplate) Build() error {
 		return err
 	}
 
+	a.ro.Lock()
 	a.Tmpl = tl
+	a.ro.Unlock()
 	return nil
 }
 
