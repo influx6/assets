@@ -80,7 +80,7 @@ type TemplateDir struct {
 
 // Templates returns a new TemplateDir instance
 func Templates(dir, ext string) *TemplateDir {
-	c := TemplateConfig{Dir: dir, ext: ext}
+	c := TemplateConfig{Dir: dir, Extension: ext}
 	return NewTemplateDir(&c)
 }
 
