@@ -1,6 +1,6 @@
 #Assets
 [![GoDoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](http://godoc.org/github.com/influx6/assets)
-[![Travis]](https://travis-ci.org/influx6/assets.svg?branch=master)
+[![Travis](https://travis-ci.org/influx6/assets.svg?branch=master)](https://travis-ci.org/influx6/assets)
 
 Provides a convenient set of tools for handling template loading
 
