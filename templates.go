@@ -140,7 +140,7 @@ type AssetTemplate struct {
 	loaded bool
 	name   string
 	files  []string
-	ext    string
+	ext    []string
 	delim  []string
 	amaps  []AssetMap
 	Tmpl   *template.Template
@@ -159,10 +159,15 @@ func BuildAssetTemplate(name, ext string, tpaths []string, fo []template.FuncMap
 	return &AssetTemplate{
 		name:  name,
 		files: tpaths,
-		ext:   ext,
+		ext:   []string{ext},
 		delim: delim,
 		Funcs: fo,
 	}
+}
+
+// Name returns the name associated with this asset
+func (a *AssetTemplate) Name() string {
+	return a.name
 }
 
 // Build loads up the trees if not loaded then builds up a new template with the layouts and includes if it fails returns an error
@@ -172,7 +177,7 @@ func (a *AssetTemplate) Build() error {
 
 		for _, dir := range a.files {
 
-			include, err := AssetTree(dir, a.ext)
+			include, err := AssetTree(dir, a.ext, nil)
 
 			if err != nil {
 				return err
@@ -270,7 +275,7 @@ func LoadTemplateAsset(name string, delims []string, mxa []AssetMap, fx []templa
 
 // LoadTemplates returns a template object with all the cached templates. You pass the extension in used (tls),the dir we need to cache and a function map for the templates
 func LoadTemplates(dir, ext string, delims []string, mo []template.FuncMap) (*template.Template, error) {
-	am, err := AssetTree(dir, ext)
+	am, err := AssetTree(dir, []string{ext}, nil)
 	if err != nil {
 		return nil, err
 	}
