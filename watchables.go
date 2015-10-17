@@ -131,7 +131,7 @@ func (w *Watcher) Start() {
 			continue
 		}
 
-		for _, path := range w.assets {
+		for n, path := range w.assets {
 			path = EnsureSlash(path)
 
 			// if we have a filter function, use it to give more control as what gets added else use normal strategy
@@ -139,12 +139,14 @@ func (w *Watcher) Start() {
 				if w.Filter(path, w.Dir) {
 					if err := wo.Add(path); err != nil {
 						log.Printf("Error adding file to watchlist: %s -> error: %s", path, err)
+						delete(w.assets, n)
 					}
 				}
 			} else {
 				if !strings.Contains(path, "bin") {
 					if err := wo.Add(path); err != nil {
 						log.Printf("Error adding file to watchlist: %s -> error: %s", path, err)
+						delete(w.assets, n)
 					}
 				}
 			}
