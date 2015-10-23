@@ -3,13 +3,30 @@ package assets
 import (
 	"bytes"
 	"html/template"
+	"log"
 	"testing"
 
 	"github.com/influx6/flux"
 )
 
+func TestAssetListings(t *testing.T) {
+	tree, err := Assets("./", nil, nil)
+
+	log.Printf("Listings: %+s -> %s", tree, err)
+
+	if err != nil {
+		flux.FatalFailed(t, "Unable to create asset map: %s", err.Error())
+	}
+
+	if tree.Size() <= 0 {
+		flux.FatalFailed(t, "expected one key atleast: %s")
+	}
+
+	flux.LogPassed(t, "Succesfully created asset map %+s", tree)
+}
+
 func TestAssetMap(t *testing.T) {
-	tree, err := AssetTree("./", ".go")
+	tree, err := AssetTree("./", []string{".go"}, nil)
 
 	if err != nil {
 		flux.FatalFailed(t, "Unable to create asset map: %s", err.Error())

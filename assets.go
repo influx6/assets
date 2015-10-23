@@ -11,24 +11,6 @@ import (
 //AssetMap provides a map of paths that contain assets of the specific filepaths
 type AssetMap map[string]string
 
-func hasIn(paths []string, dt string) bool {
-	for _, so := range paths {
-		if strings.Contains(so, dt) || so == dt {
-			return true
-		}
-	}
-	return false
-}
-
-func hasExt(paths []string, dt string) bool {
-	for _, so := range paths {
-		if so == dt {
-			return true
-		}
-	}
-	return false
-}
-
 // ReloadAssetMap reloads the files into the map skipping the already found ones
 func ReloadAssetMap(tree AssetMap, dir string, ext []string, skip []string) error {
 	var stat os.FileInfo
