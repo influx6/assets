@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -30,11 +31,49 @@ type BasicAssetTree struct {
 	Children []*BasicAssetTree
 }
 
+// String returns a formatted string response of how a BasicAssetTree should look when printed
+func (b *BasicAssetTree) String() string {
+	return fmt.Sprintf("AssetTree for -> %s at %s with Total Files of %d \n", b.Dir, b.AbsDir, b.Tree.Size())
+}
+
 // Add adds a BasicAssetTree into the children lists
 func (b *BasicAssetTree) Add(bs *BasicAssetTree) {
 	b.Ml.Lock()
-	defer b.Ml.Lock()
+	defer b.Ml.Unlock()
 	b.Children = append(b.Children, bs)
+}
+
+// Flush empties out the tree
+func (b *BasicAssetTree) Flush() {
+	b.Tree.Flush()
+	b.Children = nil
+}
+
+// Delete removes this item from the lists
+func (b *BasicAssetTree) Delete(bs *BasicAssetTree) {
+	var index = -1
+	var size int
+
+	b.Ml.RLock()
+	size = len(b.Children)
+	for ind, item := range b.Children {
+		if item == bs {
+			index = ind
+			break
+		}
+	}
+	b.Ml.RUnlock()
+
+	// not found,so we skip
+	if index < 0 {
+		return
+	}
+
+	//we found one,so we cut and reset children list
+	b.Ml.Lock()
+	copy(b.Children[:index], b.Children[index+1:])
+	b.Children = b.Children[:(size - 1)]
+	b.Ml.Unlock()
 }
 
 // EmptyAssetTree returns a new AssetTree based of the given path
@@ -51,9 +90,9 @@ func EmptyAssetTree(path string, info os.FileInfo, abs string) *BasicAssetTree {
 }
 
 // BuildAssetPath reloads the files into the map skipping the already found ones
-func BuildAssetPath(ws *sync.WaitGroup, base string, files []os.FileInfo, dirs *TreeMapWriter, pathtree *BasicAssetTree, validator PathValidators, mux PathMux) error {
-	ws.Add(1)
-	defer ws.Done()
+func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, pathtree *BasicAssetTree, validator PathValidators, mux PathMux) error {
+	// ws.Add(1)
+	// defer ws.Done()
 
 	for _, pitem := range files {
 
@@ -67,6 +106,7 @@ func BuildAssetPath(ws *sync.WaitGroup, base string, files []os.FileInfo, dirs *
 		// create a BasicAssetTree for this path
 
 		if !pitem.IsDir() {
+			// log.Printf("will mux path: %+s ", mux)
 			pathtree.Tree.Add(mux(dir, pitem), dir)
 			// pathtree.Tree[dir] = mux(dir,pitem)
 			continue
@@ -75,11 +115,27 @@ func BuildAssetPath(ws *sync.WaitGroup, base string, files []os.FileInfo, dirs *
 		var target *BasicAssetTree
 		var muxdir = mux(dir, pitem)
 
+		//open up the filepath since its a directory, read and sort
+		dfiles, err := getDirListings(dir)
+
+		// did an erro occur while trying to get the directories,if so remove if exists and continue
+		if err != nil {
+			target = dirs.Get(muxdir)
+			dirs.Delete(muxdir)
+
+			if target != nil {
+				target.Flush()
+				target = nil
+			}
+
+			continue
+		}
+
 		if dirs.Has(muxdir) {
 			target = dirs.Get(muxdir)
 		} else {
 			tabsDir, _ := filepath.Abs(dir)
-			target := EmptyAssetTree(dir, pitem, tabsDir)
+			target = EmptyAssetTree(dir, pitem, tabsDir)
 
 			//add into the global dir listings
 			dirs.Add(muxdir, target)
@@ -90,107 +146,64 @@ func BuildAssetPath(ws *sync.WaitGroup, base string, files []os.FileInfo, dirs *
 
 		// var directories []os.FileInfo
 
-		//open up the filepath since its a directory, read and sort
-		dfiles, err := getDirListings(dir)
-
-		if err != nil {
-			//TODO: should we continue or fatal return here?
-			return err
-			// continue
-		}
-
 		//do another build but send into go-routine
-		go BuildAssetPath(ws, dir, dfiles, dirs, target, validator, mux)
+		BuildAssetPath(dir, dfiles, dirs, target, validator, mux)
 	}
 
 	return nil
 }
 
 // LoadTree loads the path into the assettree updating any found trees along
-func LoadTree(dir string, tree *TreeMapWriter, fx PathValidators, fxm PathMux) (*TreeMapWriter, error) {
+func LoadTree(dir string, tree *TreeMapWriter, fx PathValidators, fxm PathMux) error {
 	var st os.FileInfo
 	var err error
 
 	if st, err = os.Stat(dir); err != nil {
-		return nil, err
-	}
-
-	// is this validate according to the current function validator
-	if !fx(dir, st) {
-		return tree, nil
-	}
-
-	//create the assettree for this path parent
-	cdir, _ := filepath.Split(dir)
-
-	//get roots stat
-	cstat, err := os.Stat(cdir)
-
-	if err != nil {
-		return tree, err
-	}
-
-	abs, _ := filepath.Abs(cdir)
-
-	var parentTree *BasicAssetTree
-
-	if tree.Has(cdir) {
-		parentTree = tree.Get(cdir)
-	} else {
-		parentTree = EmptyAssetTree(cdir, cstat, abs)
-
-		//register root into tree
-		tree.Add(cdir, parentTree)
-		// tree[cdir] = parentTree
+		return err
 	}
 
 	if !st.IsDir() {
-
-		//its a file so we just register it into the parent's tree
-		parentTree.Tree.Add(fxm(dir, st), dir)
-		// tree[fxm(cdir, cstat)] = cur
-
-	} else {
-
-		files, err := getDirListings(dir)
-
-		//unable to retrieve directory list, return tree and error
-		if err != nil {
-			return tree, err
-		}
-
-		//get the absolute path for the path
-		absdir, _ := filepath.Abs(dir)
-
-		var cur *BasicAssetTree
-		var muxcur = fxm(dir, st)
-
-		if tree.Has(muxcur) {
-			cur = tree.Get(dir)
-		} else {
-			//create the assettree for this path
-			cur = EmptyAssetTree(dir, st, absdir)
-
-			//register and mux the path as requried to the super tree as a directory tree
-			tree.Add(muxcur, cur)
-
-			// tree[fxm(dir, st)] = cur
-			//register into the parent tree as  child tree
-			parentTree.Add(cur)
-		}
-
-		//since we will be using some go-routines to improve performance,lets create a waitgroup
-		var wsg = new(sync.WaitGroup)
-
-		//ok lets build the path children
-		if err := BuildAssetPath(wsg, dir, files, tree, cur, fx, fxm); err != nil {
-			return nil, err
-		}
-
-		wsg.Wait()
+		return os.ErrInvalid
 	}
 
-	return tree, nil
+	//grab the absolute path of the dir
+	// abs, _ := filepath.Abs(dir)
+
+	files, err := getDirListings(dir)
+
+	//unable to retrieve directory list, return tree and error
+	if err != nil {
+		return err
+	}
+
+	//get the absolute path for the path
+	absdir, _ := filepath.Abs(dir)
+
+	var cur *BasicAssetTree
+	var muxcur = fxm(dir, st)
+
+	if tree.Has(muxcur) {
+		cur = tree.Get(muxcur)
+	} else {
+		//create the assettree for this path
+		cur = EmptyAssetTree(dir, st, absdir)
+
+		//register and mux the path as requried to the super tree as a directory tree
+		tree.Add(muxcur, cur)
+
+		// tree[fxm(dir, st)] = cur
+		//register into the parent tree as  child tree
+		// parentTree.Add(cur)
+	}
+
+	// log.Printf("cur at %s -> %s", cur, muxcur)
+
+	//ok lets build the path children
+	if err := BuildAssetPath(dir, files, tree, cur, fx, fxm); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Assets returns a tree map listing of a specific path and if an error occured before the map was created it will return a nil and an error but if the path was valid but its children were faced with an invalid state then it returns the map and an error
@@ -205,8 +218,54 @@ func Assets(dir string, fx PathValidators, fxm PathMux) (*TreeMapWriter, error) 
 		fxm = defaultMux
 	}
 
+	//since we will be using some go-routines to improve performance,lets create a waitgroup
+	// var wsg = new(sync.WaitGroup)
 	var tmap = make(AssetTreeMap)
 	var tree = NewTreeMapWriter(tmap)
 
-	return LoadTree(dir, tree, fx, fxm)
+	err := LoadTree(dir, tree, fx, fxm)
+
+	// wsg.Wait()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tree, nil
+}
+
+// DirListing provides a struct that can generate a map of listings of a path
+type DirListing struct {
+	dir       string
+	Listings  *TreeMapWriter
+	validator PathValidators
+	mux       PathMux
+}
+
+// DirListings returns a new DirListings for the set path or returns an error if that path does not exists or is not a directory path
+func DirListings(path string, valid PathValidators, mux PathMux) (*DirListing, error) {
+	tree, err := Assets(path, valid, mux)
+
+	if err != nil {
+		return nil, err
+	}
+
+	dls := DirListing{
+		dir:       path,
+		Listings:  tree,
+		validator: valid,
+		mux:       mux,
+	}
+
+	return &dls, nil
+}
+
+// Dir returns the path of this listings
+func (dls *DirListing) Dir() string {
+	return dls.dir
+}
+
+// Reload reloads this directory and its listing structures with updates
+func (dls *DirListing) Reload() error {
+	return LoadTree(dls.dir, dls.Listings, dls.validator, dls.mux)
 }

@@ -42,6 +42,13 @@ func (t *TreeMapWriter) Add(c string, b *BasicAssetTree) {
 	t.Wo.Unlock()
 }
 
+// Flush nils out the former lists
+func (t *TreeMapWriter) Flush() {
+	t.Wo.Lock()
+	t.Tree = make(AssetTreeMap)
+	t.Wo.Unlock()
+}
+
 // Size returns the total length of items in the map
 func (t *TreeMapWriter) Size() int {
 	t.Wo.RLock()
@@ -66,6 +73,13 @@ type MapWriter struct {
 func NewMapWriter(c AssetMap) *MapWriter {
 	ts := MapWriter{Tree: c}
 	return &ts
+}
+
+// Flush nils out the former lists
+func (t *MapWriter) Flush() {
+	t.Wo.Lock()
+	t.Tree = make(AssetMap)
+	t.Wo.Unlock()
 }
 
 // Has returns a true/false if a tree with the set string exists
