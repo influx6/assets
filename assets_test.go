@@ -73,6 +73,37 @@ func TestAssetListings(t *testing.T) {
 	flux.LogPassed(t, "Succesfully created asset map")
 }
 
+// BenchmarkAssetListings tests the speed it takes to load up a directory listings
+func BenchmarkListings(t *testing.B) {
+	for i := 0; i < t.N; i++ {
+		tree, err := DirListings("./", func(dir string, info os.FileInfo) bool {
+			if strings.Contains(dir, ".git") {
+				return false
+			}
+			return true
+		}, func(dir string, info os.FileInfo) string {
+			return filepath.Join("static/", dir)
+		})
+		if err == nil {
+			tree.Reload()
+		}
+	}
+}
+
+// BenchmarkAssetListings tests the speed it takes to load up a directory listings
+func BenchmarkAssetListings(t *testing.B) {
+	for i := 0; i < t.N; i++ {
+		Assets("./", func(dir string, info os.FileInfo) bool {
+			if strings.Contains(dir, ".git") {
+				return false
+			}
+			return true
+		}, func(dir string, info os.FileInfo) string {
+			return filepath.Join("static/", dir)
+		})
+	}
+}
+
 func TestAssetMap(t *testing.T) {
 	tree, err := AssetTree("./", []string{".go"}, nil)
 
