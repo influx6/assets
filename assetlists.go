@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-// PathValidators provides a type for validating a path and info set
-type PathValidators func(string, os.FileInfo) bool
+// PathValidator provides a type for validating a path and info set
+type PathValidator func(string, os.FileInfo) bool
 
 //PathMux provides a function type for mixing a new file path
 type PathMux func(string, os.FileInfo) string
@@ -90,7 +90,7 @@ func EmptyAssetTree(path string, info os.FileInfo, abs string) *BasicAssetTree {
 }
 
 // BuildAssetPath reloads the files into the map skipping the already found ones
-func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, pathtree *BasicAssetTree, validator PathValidators, mux PathMux) error {
+func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, pathtree *BasicAssetTree, validator PathValidator, mux PathMux) error {
 	// ws.Add(1)
 	// defer ws.Done()
 
@@ -154,7 +154,16 @@ func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, patht
 }
 
 // LoadTree loads the path into the assettree updating any found trees along
-func LoadTree(dir string, tree *TreeMapWriter, fx PathValidators, fxm PathMux) error {
+func LoadTree(dir string, tree *TreeMapWriter, fx PathValidator, fxm PathMux) error {
+	if fx == nil {
+		fx = defaultValidator
+	}
+
+	// use defaultMux if non is set
+	if fxm == nil {
+		fxm = defaultMux
+	}
+
 	var st os.FileInfo
 	var err error
 
@@ -207,7 +216,7 @@ func LoadTree(dir string, tree *TreeMapWriter, fx PathValidators, fxm PathMux) e
 }
 
 // Assets returns a tree map listing of a specific path and if an error occured before the map was created it will return a nil and an error but if the path was valid but its children were faced with an invalid state then it returns the map and an error
-func Assets(dir string, fx PathValidators, fxm PathMux) (*TreeMapWriter, error) {
+func Assets(dir string, fx PathValidator, fxm PathMux) (*TreeMapWriter, error) {
 	// use defaultValidator if non is set
 	if fx == nil {
 		fx = defaultValidator
@@ -238,12 +247,12 @@ func Assets(dir string, fx PathValidators, fxm PathMux) (*TreeMapWriter, error) 
 type DirListing struct {
 	dir       string
 	Listings  *TreeMapWriter
-	validator PathValidators
+	validator PathValidator
 	mux       PathMux
 }
 
 // DirListings returns a new DirListings for the set path or returns an error if that path does not exists or is not a directory path
-func DirListings(path string, valid PathValidators, mux PathMux) (*DirListing, error) {
+func DirListings(path string, valid PathValidator, mux PathMux) (*DirListing, error) {
 	tree, err := Assets(path, valid, mux)
 
 	if err != nil {

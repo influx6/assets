@@ -25,6 +25,18 @@ func (t *TreeMapWriter) Has(c string) bool {
 	return ok
 }
 
+// Each runnings through the lists in an out-of-order fashion
+func (t *TreeMapWriter) Each(fx func(string, *BasicAssetTree)) {
+	if fx == nil {
+		return
+	}
+	t.Wo.RLock()
+	for p, b := range t.Tree {
+		fx(p, b)
+	}
+	t.Wo.RUnlock()
+}
+
 // Delete removes a tree with the set string
 func (t *TreeMapWriter) Delete(c string) {
 	t.Wo.Lock()
@@ -88,6 +100,18 @@ func (t *MapWriter) Has(c string) bool {
 	defer t.Wo.RUnlock()
 	_, ok := t.Tree[c]
 	return ok
+}
+
+// Each runnings through the lists in an out-of-order fashion
+func (t *MapWriter) Each(fx func(string, string)) {
+	if fx == nil {
+		return
+	}
+	t.Wo.RLock()
+	for p, b := range t.Tree {
+		fx(p, b)
+	}
+	t.Wo.RUnlock()
 }
 
 // Delete removes a tree with the set string
