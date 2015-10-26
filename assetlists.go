@@ -107,7 +107,10 @@ func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, patht
 
 		if !pitem.IsDir() {
 			// log.Printf("will mux path: %+s ", mux)
-			pathtree.Tree.Add(mux(dir, pitem), dir)
+			pmx := mux(dir, pitem)
+			if !pathtree.Tree.Has(pmx) {
+				pathtree.Tree.Add(pmx, dir)
+			}
 			// pathtree.Tree[dir] = mux(dir,pitem)
 			continue
 		}
