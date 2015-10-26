@@ -3,7 +3,7 @@ package assets
 import "go/build"
 
 //SanitizeDuplicates cleans out all duplicates
-func SanitizeDuplicates(b []string) {
+func SanitizeDuplicates(b []string) []string {
 	sz := len(b) - 1
 	for i := 0; i < sz; i++ {
 		for j := i + 1; j <= sz; j++ {
@@ -15,6 +15,7 @@ func SanitizeDuplicates(b []string) {
 			}
 		}
 	}
+	return b
 }
 
 func getPackageLists(pkgname string, paths []string) ([]string, error) {
@@ -51,9 +52,7 @@ func GetPackageLists(pkgname string) ([]string, error) {
 		return nil, err
 	}
 
-	SanitizeDuplicates(paths)
-
-	return paths, nil
+	return SanitizeDuplicates(paths), nil
 }
 
 // GetAllPackageLists retrieves a set of packages directory and those of its dependencies
@@ -68,6 +67,5 @@ func GetAllPackageLists(pkgnames []string) ([]string, error) {
 	}
 
 	// log.Printf("Packages: %s", packages)
-	SanitizeDuplicates(packages)
-	return packages, nil
+	return SanitizeDuplicates(packages), nil
 }
