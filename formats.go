@@ -181,6 +181,37 @@ type httpFile struct {
 	*VFile
 }
 
+// pathStripper provides a pathStripping http.FileSystem for composing a http.FileSystem
+type pathStripper struct {
+	strip string
+	fs    http.FileSystem
+}
+
+// StripFS creates a new pathStripper http.FileSystem,to auto-strip requests path
+func StripFS(s string, fs http.FileSystem) *pathStripper {
+	ps := pathStripper{
+		strip: s,
+		fs:    fs,
+	}
+	return &ps
+}
+
+// Open strips the given path and gives that off to the internal http.FileSystem
+func (s *pathStripper) Open(file string) (http.File, error) {
+	file = cleanPath(file)
+	parts := strings.Split(file, "/")
+
+	if len(parts) <= 1 {
+		return s.fs.Open(file)
+	}
+
+	if parts[0] == filepath.Clean(s.strip) {
+		parts = parts[1:]
+	}
+
+	return s.fs.Open(strings.Join(parts, "/"))
+}
+
 // VDir defines a virtual directory structure
 type VDir struct {
 	*VFile
