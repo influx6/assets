@@ -21,7 +21,7 @@ Provides a convenient set of tools for handling template files and turning asset
     	})
 
     	if err != nil {
-        panic("directory path is not valid")
+          panic("directory path is not valid")
     	}
 
       //to get this to create and embed the files,simple call .Record()
@@ -38,7 +38,7 @@ Provides a convenient set of tools for handling template files and turning asset
     	})
 
     	if err != nil {
-    		flux.FatalFailed(t, "Unable to create bindfs for: %s", err)
+          panic("directory path is not valid")
     	}
 
     	err = bf.Record() // you can call this as many times as you want to update go file
