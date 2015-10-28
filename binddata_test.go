@@ -9,7 +9,7 @@ import (
 func TestDebugBindFS(t *testing.T) {
 	bf, err := NewBindFS(BindFSConfig{
 		InDir:   "./",
-		Dir:     "./tests/debug",
+		OutDir:  "./tests/debug",
 		Package: "debug",
 		File:    "debug",
 		Gzipped: false,
@@ -29,7 +29,7 @@ func TestDebugBindFS(t *testing.T) {
 func TestProductionBindFS(t *testing.T) {
 	bf, err := NewBindFS(BindFSConfig{
 		InDir:      "./",
-		Dir:        "./tests/prod",
+		OutDir:     "./tests/prod",
 		Package:    "prod",
 		File:       "prod",
 		Gzipped:    true,

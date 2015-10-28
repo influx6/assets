@@ -9,12 +9,15 @@ Provides a convenient set of tools for handling template files and turning asset
   - Emdedding
 
     ```go
+
+      //to embedd a given directory but in development mode,where files are loaded directory from disk
     	bf, err := NewBindFS(BindFSConfig{
     		InDir:   "./",
     		OutDir:     "./tests/debug",
     		Package: "debug",
     		File:    "debug",
     		Gzipped: false,
+        Production: false
     	})
 
     	if err != nil {
@@ -22,7 +25,23 @@ Provides a convenient set of tools for handling template files and turning asset
     	}
 
       //to get this to create and embed the files,simple call .Record()
-    	err = bf.Record()
+    	err = bf.Record() // you can call this as many times as you want to update go file
+
+      //to embed files in production mode,that is assets are embedded into the generate go file
+    	bf, err := NewBindFS(BindFSConfig{
+    		InDir:      "./",
+    		OutDir:     "./tests/prod",
+    		Package:    "prod",
+    		File:       "prod",
+    		Gzipped:    true,
+    		Production: true,
+    	})
+
+    	if err != nil {
+    		flux.FatalFailed(t, "Unable to create bindfs for: %s", err)
+    	}
+
+    	err = bf.Record() // you can call this as many times as you want to update go file
 
     ```
 
