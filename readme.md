@@ -19,8 +19,8 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: true,
-                NoDecompression: true,
-                Production: false,
+            NoDecompression: true,
+            Production: false,
     	})
 
     	if err != nil {
@@ -72,7 +72,7 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: false,
-                Production: false,
+            Production: false,
     	})
 
     	if err != nil {
@@ -93,7 +93,7 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package:    "prod",
     		File:       "prod",
     		Gzipped:    true,
-    		Production: true,
+    	    Production: true,
     	})
 
     	if err != nil {
@@ -113,8 +113,8 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: true,
-                NoDecompression: true,
-                Production: true,
+            NoDecompression: true,
+            Production: true,
     	})
 
     	if err != nil {
