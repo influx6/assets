@@ -8,7 +8,7 @@ Provides a convenient set of tools for handling template files and turning asset
 
   - Emdedding
   
-       *Note to run the tests in test/* subfolders first run `go test` to generate the need files*
+       *Note to run the tests in ./test/* sub directories, first run `go test` in the root directory to generate the needed files*
 
     - To embed a given directory but in development mode(loading from disk) but also gzipping output
     ```go
