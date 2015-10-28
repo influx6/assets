@@ -8,9 +8,31 @@ Provides a convenient set of tools for handling template files and turning asset
 
   - Emdedding
 
+    - To embed a given directory but in development mode(loading from disk) but also gzipping output
     ```go
 
-      //to embedd a given directory but in development mode,where files are loaded directory from disk
+    	bf, err := NewBindFS(BindFSConfig{
+    		InDir:   "./",
+    		OutDir:     "./tests/debug",
+    		Package: "debug",
+    		File:    "debug",
+    		Gzipped: true,
+        NoDecompression: true,
+        Production: false,
+    	})
+
+    	if err != nil {
+          panic("directory path is not valid")
+    	}
+
+      //to get this to create and embed the files,simple call .Record()
+    	err = bf.Record() // you can call this as many times as you want to update go file
+
+    ```
+
+    - To embed a given directory but in development mode,where files are loaded directory from disk
+    ```go
+
     	bf, err := NewBindFS(BindFSConfig{
     		InDir:   "./",
     		OutDir:     "./tests/debug",
@@ -27,7 +49,11 @@ Provides a convenient set of tools for handling template files and turning asset
       //to get this to create and embed the files,simple call .Record()
     	err = bf.Record() // you can call this as many times as you want to update go file
 
-      //to embed files in production mode,i.e all assets are embedded into the generate go file
+    ```
+
+    - To embed files in production mode,i.e all assets are embedded into the generate go file have output decompressed
+
+    ```go
     	bf, err := NewBindFS(BindFSConfig{
     		InDir:      "./",
     		OutDir:     "./tests/prod",
@@ -45,6 +71,27 @@ Provides a convenient set of tools for handling template files and turning asset
 
     ```
 
+    - To embed a given directory in production mode but also enforcing no decompression of output
+    ```go
+
+    	bf, err := NewBindFS(BindFSConfig{
+    		InDir:   "./",
+    		OutDir:     "./tests/debug",
+    		Package: "debug",
+    		File:    "debug",
+    		Gzipped: true,
+        NoDecompression: true,
+        Production: true,
+    	})
+
+    	if err != nil {
+          panic("directory path is not valid")
+    	}
+
+      //to get this to create and embed the files,simple call .Record()
+    	err = bf.Record() // you can call this as many times as you want to update go file
+
+    ```
 
   - Templates
   ```go
