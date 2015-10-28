@@ -179,7 +179,7 @@ func (bfs *BindFS) Record() error {
 		pathAbs := filepath.ToSlash(filepath.Clean(dir.AbsDir))
 
 		//fill up the directory content
-		dirContent := fmt.Sprintf(dirRegister, path, modDir, pathDir, pathAbs)
+		dirContent := fmt.Sprintf(dirRegister, path, modDir, pathDir, pathAbs, dir.root)
 
 		var subs []string
 		var data []string

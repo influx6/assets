@@ -70,7 +70,7 @@ func TestVirtualDir(t *testing.T) {
 	var root = NewDirCollector()
 
 	root.Set("assets", func() *VDir {
-		var dir = NewVDir("assets", ".", "./")
+		var dir = NewVDir("assets", ".", "./", true)
 
 		dir.AddDirectory("tests", func() *VDir {
 			return root.Get("assets/tests")
@@ -83,7 +83,7 @@ func TestVirtualDir(t *testing.T) {
 	}())
 
 	root.Set("assets/tests", func() *VDir {
-		var dir = NewVDir("assets/tests", "./tests", "./")
+		var dir = NewVDir("assets/tests", "./tests", "./", false)
 		dir.AddFile(NewVFile("./", "assets/tests/lock.md", "tests/lock.md", 5, true, func(v *VFile) ([]byte, error) {
 			return []byte("shop"), nil
 		}))

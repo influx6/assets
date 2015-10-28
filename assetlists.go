@@ -30,6 +30,7 @@ type BasicAssetTree struct {
 	Tree     *MapWriter
 	Ml       sync.RWMutex
 	Children []*BasicAssetTree
+	root     bool
 }
 
 // String returns a formatted string response of how a BasicAssetTree should look when printed
@@ -213,9 +214,11 @@ func LoadTree(dir string, tree *TreeMapWriter, fx PathValidator, fxm PathMux) er
 	} else {
 		//create the assettree for this path
 		cur = EmptyAssetTree(dir, muxcur, st, absdir)
+		cur.root = true
 
 		//register and mux the path as requried to the super tree as a directory tree
 		tree.Add(muxcur, cur)
+		// tree.Add("/", cur)
 
 		// tree[fxm(dir, st)] = cur
 		//register into the parent tree as  child tree

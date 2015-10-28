@@ -33,7 +33,7 @@ func init(){
 
 	dirRegister = `
   RootDirectory.Set(%q,func() *VDir{
-    var dir = NewVDir(%q,%q,%q)
+    var dir = NewVDir(%q,%q,%q,%t)
 
     // register the sub-directories
     {{ subs }}
@@ -188,10 +188,11 @@ type VDir struct {
 	Files     FileCollector
 	SubMutex  sync.RWMutex
 	Subs      DeferDirCollector
+	root      bool
 }
 
 // NewVDir creates a new VirtualDirectory
-func NewVDir(moddedPath, realPath, abs string) *VDir {
+func NewVDir(moddedPath, realPath, abs string, root bool) *VDir {
 	vf := VFile{
 		BaseDir:   abs,
 		Dir:       moddedPath,
@@ -204,6 +205,7 @@ func NewVDir(moddedPath, realPath, abs string) *VDir {
 		VFile: &vf,
 		Files: NewFileCollector(),
 		Subs:  NewDeferDirCollector(),
+		root:  root,
 	}
 }
 
@@ -616,10 +618,27 @@ func (c DirCollector) GetDir(dir string) (*VDir, error) {
 
 // Root gets the root path found in the list,either a "." or a "/"
 func (c DirCollector) Root() *VDir {
+	// do we have a single slashed directory path /
 	if c.Has("/") {
 		return c.Get("/")
 	}
-	return c.Get(".")
+
+	// do we have a single dot directory path .
+	if c.Has(".") {
+		return c.Get(".")
+	}
+
+	//else fallback to search for root boolean set
+	var vdir *VDir
+
+	for _, dir := range c {
+		if dir.root {
+			vdir = dir
+			break
+		}
+	}
+
+	return vdir
 }
 
 // Remove deletes a key:value pair
