@@ -11,7 +11,7 @@ Provides a convenient set of tools for handling template files and turning asset
     ```go
     	bf, err := NewBindFS(BindFSConfig{
     		InDir:   "./",
-    		Dir:     "./tests/debug",
+    		OutDir:     "./tests/debug",
     		Package: "debug",
     		File:    "debug",
     		Gzipped: false,

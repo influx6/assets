@@ -19,7 +19,7 @@ const ProductionMode = 1
 // BindFSConfig provides a configuration struct for BindFS
 type BindFSConfig struct {
 	InDir      string        //directory path use as source
-	Dir        string        //directory path to save file in
+	OutDir     string        //directory path to save file in
 	Package    string        //package name for the file
 	File       string        //file name of the file
 	Gzipped    bool          // to enable gzipping
@@ -104,7 +104,7 @@ func (bfs *BindFS) ProductionMode() {
 func (bfs *BindFS) Record() error {
 	pwd, _ := os.Getwd()
 	input := filepath.Join(pwd, bfs.config.InDir)
-	endpoint := filepath.Join(pwd, bfs.config.Dir, bfs.config.File+".go")
+	endpoint := filepath.Join(pwd, bfs.config.OutDir, bfs.config.File+".go")
 	endpointDir := filepath.Dir(endpoint)
 	pkgHeader := fmt.Sprintf(packageDetails, bfs.config.Package, input, bfs.config.Package)
 
