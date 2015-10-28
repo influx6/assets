@@ -7,7 +7,7 @@ Provides a convenient set of tools for handling template files and turning asset
 ##Example
 
   - Emdedding
-  
+
        *Note to run the tests in ./test/* sub directories, first run `go test` in the root directory to generate the needed files*
 
     - To embed a given directory but in development mode(loading from disk) but also gzipping output
@@ -30,6 +30,34 @@ Provides a convenient set of tools for handling template files and turning asset
       //to get this to create and embed the files,simple call .Record()
     	err = bf.Record() // you can call this as many times as you want to update go file
 
+
+    ```
+
+    - Loading a generated asset file
+
+    ```go
+      //a genetate file called `debug.go` will exists in ./tests/debug/
+      //to use simply loadup
+
+      import (
+        "github.com/influx6/assets/tests/debug"
+        "net/http"
+      )
+
+      func main(){
+
+        //to retrieve a directory,simple do:
+        fixtures,err := debug.RootDirectory.GetDir("/fixtures/")
+
+        //to retrieve a file,simple do:
+        basic,err := debug.RootDirectory.GetFile("/fixtures/base/basic.tmpl")
+
+        // or use the root directory as a http.FileSystem
+        rootFs := http.FileServer(debug.RootDirectory.Root())
+
+        //or use any sub-directory you want
+        fixturesFs := http.FileServer(debug.RootDirectory.Get("/fixtures/")) 
+      }
     ```
 
     - To embed a given directory but in development mode,where files are loaded directory from disk
