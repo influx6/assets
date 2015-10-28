@@ -7,7 +7,8 @@ Provides a convenient set of tools for handling template files and turning asset
 ##Example
 
   - Emdedding
-    *Note to run the tests in test/* subfolders first run `go test` to generate the need files*
+  
+       *Note to run the tests in test/* subfolders first run `go test` to generate the need files*
 
     - To embed a given directory but in development mode(loading from disk) but also gzipping output
     ```go
@@ -18,12 +19,12 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: true,
-        NoDecompression: true,
-        Production: false,
+                NoDecompression: true,
+                Production: false,
     	})
 
     	if err != nil {
-          panic("directory path is not valid")
+             panic("directory path is not valid")
     	}
 
       //to get this to create and embed the files,simple call .Record()
@@ -40,7 +41,7 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: false,
-        Production: false,
+                Production: false,
     	})
 
     	if err != nil {
@@ -81,8 +82,8 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: true,
-        NoDecompression: true,
-        Production: true,
+                NoDecompression: true,
+                Production: true,
     	})
 
     	if err != nil {
