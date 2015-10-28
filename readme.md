@@ -46,10 +46,10 @@ Provides a convenient set of tools for handling template files and turning asset
 
       func main(){
 
-        //to retrieve a directory,simple do:
+        //to retrieve a directory,simply do:
         fixtures,err := debug.RootDirectory.GetDir("/fixtures/")
 
-        //to retrieve a file,simple do:
+        //to retrieve a file,simply do:
         basic,err := debug.RootDirectory.GetFile("/fixtures/base/basic.tmpl")
 
         // create a http.FileServer from the global RootDirectory listing
