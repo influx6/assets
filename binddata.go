@@ -41,11 +41,11 @@ type BindFS struct {
 }
 
 // NewBindFS returns a new BindFS instance or an error if it fails to located directory
-func NewBindFS(config BindFSConfig) (*BindFS, error) {
+func NewBindFS(config *BindFSConfig) (*BindFS, error) {
 	vali := config.ValidPath
 	mux := config.Mux
 
-	(&config).ValidPath = func(path string, in os.FileInfo) bool {
+	(config).ValidPath = func(path string, in os.FileInfo) bool {
 		if strings.Contains(path, ".git") {
 			return false
 		}
@@ -58,7 +58,7 @@ func NewBindFS(config BindFSConfig) (*BindFS, error) {
 	}
 
 	//clean out pathway or use custom muxer if provided
-	(&config).Mux = func(path string, in os.FileInfo) string {
+	(config).Mux = func(path string, in os.FileInfo) string {
 		if mux != nil {
 			return mux(path, in)
 		}
@@ -75,7 +75,7 @@ func NewBindFS(config BindFSConfig) (*BindFS, error) {
 	}
 
 	bf := BindFS{
-		config:  &config,
+		config:  config,
 		listing: ls,
 	}
 

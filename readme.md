@@ -13,7 +13,7 @@ Provides a convenient set of tools for handling template files and turning asset
     - To embed a given directory but in development mode(loading from disk) but also gzipping output
     ```go
 
-    	bf, err := NewBindFS(BindFSConfig{
+    	bf, err := NewBindFS(&BindFSConfig{
     		InDir:   "./",
     		OutDir:     "./tests/debug",
     		Package: "debug",
@@ -67,7 +67,7 @@ Provides a convenient set of tools for handling template files and turning asset
     - To embed a given directory but in development mode,where files are loaded directory from disk
     ```go
 
-    	bf, err := NewBindFS(BindFSConfig{
+    	bf, err := NewBindFS(&BindFSConfig{
     		InDir:   "./",
     		OutDir:     "./tests/debug",
     		Package: "debug",
@@ -88,7 +88,7 @@ Provides a convenient set of tools for handling template files and turning asset
     - To embed files in production mode,i.e all assets are embedded into the generated go file and have all output ungzipped
 
     ```go
-    	bf, err := NewBindFS(BindFSConfig{
+    	bf, err := NewBindFS(&BindFSConfig{
     		InDir:      "./",
     		OutDir:     "./tests/prod",
     		Package:    "prod",
@@ -108,7 +108,7 @@ Provides a convenient set of tools for handling template files and turning asset
     - To embed a given directory in production mode but also enforcing no decompression of output
     ```go
 
-    	bf, err := NewBindFS(BindFSConfig{
+    	bf, err := NewBindFS(&BindFSConfig{
     		InDir:   "./",
     		OutDir:     "./tests/debug",
     		Package: "debug",

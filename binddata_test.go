@@ -7,7 +7,7 @@ import (
 )
 
 func TestDebugCompressBindFS(t *testing.T) {
-	bf, err := NewBindFS(BindFSConfig{
+	bf, err := NewBindFS(&BindFSConfig{
 		InDir:           "./",
 		OutDir:          "./tests/debugnodecompress",
 		Package:         "debug",
@@ -28,7 +28,7 @@ func TestDebugCompressBindFS(t *testing.T) {
 }
 
 func TestDebugBindFS(t *testing.T) {
-	bf, err := NewBindFS(BindFSConfig{
+	bf, err := NewBindFS(&BindFSConfig{
 		InDir:   "./",
 		OutDir:  "./tests/debug",
 		Package: "debug",
@@ -48,7 +48,7 @@ func TestDebugBindFS(t *testing.T) {
 }
 
 func TestProductionBindFS(t *testing.T) {
-	bf, err := NewBindFS(BindFSConfig{
+	bf, err := NewBindFS(&BindFSConfig{
 		InDir:      "./",
 		OutDir:     "./tests/prod",
 		Package:    "prod",
@@ -69,7 +69,7 @@ func TestProductionBindFS(t *testing.T) {
 }
 
 func TestProductionNoDecompressBindFS(t *testing.T) {
-	bf, err := NewBindFS(BindFSConfig{
+	bf, err := NewBindFS(&BindFSConfig{
 		InDir:           "./",
 		OutDir:          "./tests/prodnodecompression",
 		Package:         "prod",
