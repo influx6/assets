@@ -333,7 +333,8 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 	var first = parts[0]
 
 	if vd.Subs.Has(first) {
-		return vd.GetDir(strings.Join(parts[1:], "/"))
+		fdir := vd.Subs.Get(first)()
+		return fdir.GetDir(strings.Join(parts[1:], "/"))
 	}
 
 	return nil, os.ErrNotExist
@@ -639,6 +640,20 @@ func (c DirCollector) Root() *VDir {
 	}
 
 	return vdir
+}
+
+// Open meets the http.FileSystem interface requirements
+func (c DirCollector) Open(file string) (http.File, error) {
+	vf, err := c.GetFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	data, _ := vf.Data()
+	return &httpFile{
+		Reader: bytes.NewReader(data),
+		VFile:  vf,
+	}, nil
 }
 
 // Remove deletes a key:value pair

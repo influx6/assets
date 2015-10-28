@@ -52,11 +52,14 @@ Provides a convenient set of tools for handling template files and turning asset
         //to retrieve a file,simple do:
         basic,err := debug.RootDirectory.GetFile("/fixtures/base/basic.tmpl")
 
-        // or use the root directory as a http.FileSystem
-        rootFs := http.FileServer(debug.RootDirectory.Root())
+        // create a http.FileServer from the global RootDirectory listing
+        rootFs := http.FileServer(debug.RootDirectory)
+
+        // or use the root VirtualDirectory as a http.FileSystem
+        rootFs2 := http.FileServer(debug.RootDirectory.Root())
 
         //or use any sub-directory you want
-        fixturesFs := http.FileServer(debug.RootDirectory.Get("/fixtures/")) 
+        fixturesFs := http.FileServer(debug.RootDirectory.Get("/fixtures/"))
       }
     ```
 
