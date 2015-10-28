@@ -17,7 +17,7 @@ Provides a convenient set of tools for handling template files and turning asset
     		Package: "debug",
     		File:    "debug",
     		Gzipped: false,
-        Production: false
+        Production: false,
     	})
 
     	if err != nil {
