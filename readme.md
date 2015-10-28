@@ -60,6 +60,7 @@ Provides a convenient set of tools for handling template files and turning asset
 
         //or use any sub-directory you want
         fixturesFs := http.FileServer(debug.RootDirectory.Get("/fixtures/"))
+
       }
     ```
 
