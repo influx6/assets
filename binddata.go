@@ -103,6 +103,8 @@ func (bfs *BindFS) ProductionMode() {
 
 // Record dumps all the files and dir listings with their corresponding data into a go file within the specified path
 func (bfs *BindFS) Record() error {
+	bfs.listing.Reload()
+
 	pwd, _ := os.Getwd()
 	input := filepath.Join(pwd, bfs.config.InDir)
 	endpoint := filepath.Join(pwd, bfs.config.OutDir, bfs.config.File+".go")
@@ -204,12 +206,17 @@ func (bfs *BindFS) Record() error {
 			if bfs.Mode() == DevelopmentMode {
 				stat, _ := os.Stat(filepath.Join(pwd, real))
 				var filreadFunc = fileRead
+				var size int64
+
+				if stat != nil {
+					size = stat.Size()
+				}
 
 				if bfs.config.Gzipped && bfs.config.NoDecompression {
 					filreadFunc = comfileRead
 				}
 
-				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, stat.Size(), !bfs.config.NoDecompression, filreadFunc)
+				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, size, !bfs.config.NoDecompression, filreadFunc)
 			} else {
 				//production mode is active,we need to load the file contents
 
