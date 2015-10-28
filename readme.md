@@ -27,7 +27,7 @@ Provides a convenient set of tools for handling template files and turning asset
       //to get this to create and embed the files,simple call .Record()
     	err = bf.Record() // you can call this as many times as you want to update go file
 
-      //to embed files in production mode,that is assets are embedded into the generate go file
+      //to embed files in production mode,i.e all assets are embedded into the generate go file
     	bf, err := NewBindFS(BindFSConfig{
     		InDir:      "./",
     		OutDir:     "./tests/prod",
