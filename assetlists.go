@@ -24,6 +24,7 @@ func defaultMux(n string, _ os.FileInfo) string {
 // BasicAssetTree represent a directory structure and its corresponding assets
 type BasicAssetTree struct {
 	Dir      string
+	ModDir   string
 	AbsDir   string
 	Info     os.FileInfo
 	Tree     *MapWriter
@@ -76,10 +77,23 @@ func (b *BasicAssetTree) Delete(bs *BasicAssetTree) {
 	b.Ml.Unlock()
 }
 
+// EachChild iterates through the children dir in this tree
+func (b *BasicAssetTree) EachChild(fx func(bs *BasicAssetTree)) {
+	if fx == nil {
+		return
+	}
+	b.Ml.RLock()
+	defer b.Ml.RUnlock()
+	for _, child := range b.Children {
+		fx(child)
+	}
+}
+
 // EmptyAssetTree returns a new AssetTree based of the given path
-func EmptyAssetTree(path string, info os.FileInfo, abs string) *BasicAssetTree {
+func EmptyAssetTree(path, mod string, info os.FileInfo, abs string) *BasicAssetTree {
 	as := BasicAssetTree{
 		Dir:      path,
+		ModDir:   mod,
 		AbsDir:   abs,
 		Info:     info,
 		Tree:     NewMapWriter(make(AssetMap)),
@@ -138,7 +152,7 @@ func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, patht
 			target = dirs.Get(muxdir)
 		} else {
 			tabsDir, _ := filepath.Abs(dir)
-			target = EmptyAssetTree(dir, pitem, tabsDir)
+			target = EmptyAssetTree(dir, muxdir, pitem, tabsDir)
 
 			//add into the global dir listings
 			dirs.Add(muxdir, target)
@@ -198,7 +212,7 @@ func LoadTree(dir string, tree *TreeMapWriter, fx PathValidator, fxm PathMux) er
 		cur = tree.Get(muxcur)
 	} else {
 		//create the assettree for this path
-		cur = EmptyAssetTree(dir, st, absdir)
+		cur = EmptyAssetTree(dir, muxcur, st, absdir)
 
 		//register and mux the path as requried to the super tree as a directory tree
 		tree.Add(muxcur, cur)
@@ -270,6 +284,16 @@ func DirListings(path string, valid PathValidator, mux PathMux) (*DirListing, er
 	}
 
 	return &dls, nil
+}
+
+// EachDir calls the internal listings EachDir function
+func (dls *DirListing) EachDir(fx func(b *BasicAssetTree, realPath string)) {
+	dls.Listings.Each(fx)
+}
+
+// EachDirFiles calls the internal listings EachDirFiles function
+func (dls *DirListing) EachDirFiles(fx func(b *BasicAssetTree, moddedPath, realPath string)) {
+	dls.Listings.EachDirFiles(fx)
 }
 
 // Dir returns the path of this listings

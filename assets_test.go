@@ -25,8 +25,8 @@ func TestListings(t *testing.T) {
 		flux.FatalFailed(t, "Unable to create asset map: %s", err.Error())
 	}
 
-	if tree.Listings.Size() <= 0 || tree.Listings.Size() > 5 {
-		flux.FatalFailed(t, "expected size to be below 5")
+	if tree.Listings.Size() <= 0 || tree.Listings.Size() > 8 {
+		flux.FatalFailed(t, "expected size to be below 6 but got %d", tree.Listings.Size())
 	}
 
 	flux.LogPassed(t, "Succesfully created directory listings")
@@ -45,8 +45,8 @@ func TestListings(t *testing.T) {
 		flux.FatalFailed(t, "Unable to reload listings: %s", err.Error())
 	}
 
-	if tree.Listings.Size() <= 0 || tree.Listings.Size() < 5 {
-		flux.FatalFailed(t, "expected size to be above 5")
+	if tree.Listings.Size() <= 0 || tree.Listings.Size() < 8 {
+		flux.FatalFailed(t, "expected size to be above 6 but got %d", tree.Listings.Size())
 	}
 
 	flux.LogPassed(t, "Succesfully reloaded directory listings")
@@ -115,7 +115,7 @@ func TestAssetMap(t *testing.T) {
 		flux.FatalFailed(t, "expected one key atleast: %s")
 	}
 
-	flux.LogPassed(t, "Succesfully created asset map %+s", tree)
+	flux.LogPassed(t, "Succesfully created asset map tree")
 }
 
 type dataPack struct {
@@ -143,7 +143,7 @@ func TestBasicAssets(t *testing.T) {
 		flux.FatalFailed(t, "Unable to exec templates: %+s", err)
 	}
 
-	flux.LogPassed(t, "Loaded Template succesfully: %s", string(buf.Bytes()))
+	flux.LogPassed(t, "Loaded Template succesfully")
 }
 
 func TestTemplateDir(t *testing.T) {
@@ -177,7 +177,7 @@ func TestTemplateDir(t *testing.T) {
 		flux.FatalFailed(t, "Unable to exec templates: %+s", err)
 	}
 
-	flux.LogPassed(t, "Loaded Template succesfully: %s", string(buf.Bytes()))
+	flux.LogPassed(t, "Loaded Template succesfully")
 }
 
 func TestTemplateAssets(t *testing.T) {
@@ -201,5 +201,5 @@ func TestTemplateAssets(t *testing.T) {
 		flux.FatalFailed(t, "Unable to exec templates: %+s", err)
 	}
 
-	flux.LogPassed(t, "Loaded Template succesfully: %s", string(buf.Bytes()))
+	flux.LogPassed(t, "Loaded Template succesfully")
 }

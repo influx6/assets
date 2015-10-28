@@ -1,11 +1,68 @@
 package assets
 
 import (
+	"bytes"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// createCompressWriter creates a non-gzip compressed writer
+func createUnCompressWriter(w io.Writer) io.WriteCloser {
+	return &nopWriter{w}
+}
+
+// createCompressWriter creates a gzip compressed writer
+func createCompressWriter(w io.Writer) io.WriteCloser {
+	return gzip.NewWriter(&StringWriter{W: w})
+}
+
+// sanitize prepares a valid UTF-8 string as a raw string constant.
+func sanitize(b []byte) []byte {
+	// Replace ` with `+"`"+`
+	b = bytes.Replace(b, []byte("`"), []byte("`+\"`\"+`"), -1)
+
+	// Replace BOM with `+"\xEF\xBB\xBF"+`
+	// (A BOM is valid UTF-8 but not permitted in Go source files.
+	// I wouldn't bother handling this, but for some insane reason
+	// jquery.js has a BOM somewhere in the middle.)
+	return bytes.Replace(b, []byte("\xEF\xBB\xBF"), []byte("`+\"\\xEF\\xBB\\xBF\"+`"), -1)
+}
+
+func readData(v *VFile, data []byte) ([]byte, error) {
+	// reader, err := gzip.NewReader(strings.NewReader(data))
+	reader, err := gzip.NewReader(bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to: %q\n", v.Name(), v.Path(), err)
+	}
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, reader)
+	clerr := reader.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to gzip reader error: %q\n", v.Name(), v.Path(), err)
+	}
+
+	if clerr != nil {
+		return nil, clerr
+	}
+
+	return buf.Bytes(), nil
+}
+
+func readFile(v *VFile) ([]byte, error) {
+	fo, err := ioutil.ReadFile(v.RealPath())
+	if err != nil {
+		return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+	}
+	return fo, nil
+}
 
 // ByName Implement sort.Interface for []os.FileInfo based on Name()
 type ByName []os.FileInfo
@@ -64,4 +121,16 @@ func getDirListings(dir string) ([]os.FileInfo, error) {
 	sort.Sort(ByName(files))
 
 	return files, nil
+}
+
+type nopWriter struct {
+	w io.Writer
+}
+
+func (n *nopWriter) Close() error {
+	return nil
+}
+
+func (n *nopWriter) Write(b []byte) (int, error) {
+	return n.w.Write(b)
 }

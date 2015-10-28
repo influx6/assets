@@ -17,6 +17,21 @@ func NewTreeMapWriter(c AssetTreeMap) *TreeMapWriter {
 	return &ts
 }
 
+// EachDirFiles iterates through all directories in the tree map,
+//each directory BasicAssetTree is passed with the current file (its modded path and its realpath)
+func (t *TreeMapWriter) EachDirFiles(fx func(b *BasicAssetTree, moddedPath, realPath string)) {
+	if fx == nil {
+		return
+	}
+	t.Wo.RLock()
+	for _, dir := range t.Tree {
+		dir.Tree.Each(func(mod, real string) {
+			fx(dir, mod, real)
+		})
+	}
+	t.Wo.RUnlock()
+}
+
 // Has returns a true/false if a tree with the set string exists
 func (t *TreeMapWriter) Has(c string) bool {
 	t.Wo.RLock()
@@ -26,13 +41,13 @@ func (t *TreeMapWriter) Has(c string) bool {
 }
 
 // Each runnings through the lists in an out-of-order fashion
-func (t *TreeMapWriter) Each(fx func(string, *BasicAssetTree)) {
+func (t *TreeMapWriter) Each(fx func(*BasicAssetTree, string)) {
 	if fx == nil {
 		return
 	}
 	t.Wo.RLock()
 	for p, b := range t.Tree {
-		fx(p, b)
+		fx(b, p)
 	}
 	t.Wo.RUnlock()
 }
