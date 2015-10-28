@@ -84,7 +84,7 @@ Provides a convenient set of tools for handling template files and turning asset
 
     ```
 
-    - To embed files in production mode,i.e all assets are embedded into the generate go file have output decompressed
+    - To embed files in production mode,i.e all assets are embedded into the generated go file have output decompressed
 
     ```go
     	bf, err := NewBindFS(BindFSConfig{
