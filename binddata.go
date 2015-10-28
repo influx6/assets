@@ -18,14 +18,15 @@ const ProductionMode = 1
 
 // BindFSConfig provides a configuration struct for BindFS
 type BindFSConfig struct {
-	InDir      string        //directory path use as source
-	OutDir     string        //directory path to save file in
-	Package    string        //package name for the file
-	File       string        //file name of the file
-	Gzipped    bool          // to enable gzipping
-	Production bool          // to enable production mode as default
-	ValidPath  PathValidator //use to filter allowed paths
-	Mux        PathMux       //use to mutate path look
+	InDir           string        //directory path use as source
+	OutDir          string        //directory path to save file in
+	Package         string        //package name for the file
+	File            string        //file name of the file
+	Gzipped         bool          // to enable gzipping of filecontents
+	NoDecompression bool          // active only when Gzipped is true,this disables decompression of data response or forces compression of output when in debug mode
+	Production      bool          // to enable production mode as default
+	ValidPath       PathValidator //use to filter allowed paths
+	Mux             PathMux       //use to mutate path look
 }
 
 // BindFS provides the struct for creating and updating a go file containing static assets from a directory
@@ -133,13 +134,21 @@ func (bfs *BindFS) Record() error {
 
 	//writes the library imports
 	if bfs.Mode() > 0 {
-		// if !bfs.config.Gzipped {
-		// fmt.Fprint(output, uncomImports)
-		// } else {
-		fmt.Fprint(output, comImports)
-		// }
+		if bfs.config.Gzipped {
+			if bfs.config.NoDecompression {
+				fmt.Fprint(output, nocomImports)
+			} else {
+				fmt.Fprint(output, comImports)
+			}
+		} else {
+			fmt.Fprint(output, nocomImports)
+		}
 	} else {
-		fmt.Fprint(output, debugImports)
+		if bfs.config.Gzipped && bfs.config.NoDecompression {
+			fmt.Fprint(output, debugComImports)
+		} else {
+			fmt.Fprint(output, debugImports)
+		}
 	}
 
 	//writing the libraries core
@@ -147,10 +156,14 @@ func (bfs *BindFS) Record() error {
 	fmt.Fprint(output, structBase)
 
 	if bfs.Mode() > 0 {
-		if !bfs.config.Gzipped {
-			fmt.Fprint(output, uncomFunc)
+		if bfs.config.Gzipped {
+			if bfs.config.NoDecompression {
+				fmt.Fprint(output, uncomFunc)
+			} else {
+				fmt.Fprint(output, comFunc)
+			}
 		} else {
-			fmt.Fprint(output, comFunc)
+			fmt.Fprint(output, uncomFunc)
 		}
 	}
 
@@ -190,7 +203,13 @@ func (bfs *BindFS) Record() error {
 			var output string
 			if bfs.Mode() == DevelopmentMode {
 				stat, _ := os.Stat(filepath.Join(pwd, real))
-				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, stat.Size(), fileRead)
+				var filreadFunc = fileRead
+
+				if bfs.config.Gzipped && bfs.config.NoDecompression {
+					filreadFunc = comfileRead
+				}
+
+				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, stat.Size(), !bfs.config.NoDecompression, filreadFunc)
 			} else {
 				//production mode is active,we need to load the file contents
 
@@ -231,7 +250,7 @@ func (bfs *BindFS) Record() error {
 					format = fmt.Sprintf(prodRead, fmt.Sprintf("`%s`", bu))
 				}
 
-				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, n, format)
+				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, n, !bfs.config.NoDecompression, format)
 			}
 
 			data = append(data, output)

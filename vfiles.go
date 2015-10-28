@@ -190,7 +190,8 @@ type DataPack func(*VFile) ([]byte, error)
 
 // VFile or virtual file for provide a virtual file info
 type VFile struct {
-	Compressed    bool
+	// Compressed    bool
+	Decompress    bool
 	ShadowDir     string
 	BaseDir       string
 	Dir           string
@@ -203,17 +204,19 @@ type VFile struct {
 }
 
 // NewVFile creates a new VirtualFile
-func NewVFile(pwd, modded, real string, size int64, fx DataPack) *VFile {
+func NewVFile(pwd, modded, real string, size int64, decompress bool, fx DataPack) *VFile {
 	mdir := filepath.Dir(modded)
 	rdir := filepath.Dir(real)
 	vf := VFile{
-		BaseDir:   pwd,
-		Dir:       mdir,
-		ShadowDir: rdir,
-		FileName:  filepath.Base(modded),
-		Mod:       time.Now(),
-		Datasize:  size,
-		DataPack:  fx,
+		// Compressed: compressed,
+		Decompress: decompress,
+		BaseDir:    pwd,
+		Dir:        mdir,
+		ShadowDir:  rdir,
+		FileName:   filepath.Base(modded),
+		Mod:        time.Now(),
+		Datasize:   size,
+		DataPack:   fx,
 	}
 
 	return &vf

@@ -45,6 +45,22 @@ func init(){
   }())
 `
 
+	debugComImports = `
+import (
+	"bytes"
+	"compress/gzip"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+	`
+
 	debugImports = `
 import (
 	"bytes"
@@ -77,13 +93,48 @@ import (
 
 `
 
+	nocomImports = `
+import (
+	"bytes"
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+`
+
 	debugFile = `
-		dir.AddFile(NewVFile(%q,%q,%q,%d,%s))
+		dir.AddFile(NewVFile(%q,%q,%q,%d,%t,%s))
 	`
 
 	prodRead = `func(v *VFile) ([]byte,error) {
 	    return readData(v,[]byte(%s))
 	  }`
+
+	comfileRead = `func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}`
 
 	fileRead = `func(v *VFile) ([]byte, error) {
 			fo, err := ioutil.ReadFile(v.RealPath())
@@ -303,7 +354,8 @@ type DataPack func(*VFile) ([]byte, error)
 
 // VFile or virtual file for provide a virtual file info
 type VFile struct {
-	Compressed    bool
+	// Compressed    bool
+	Decompress    bool
 	ShadowDir     string
 	BaseDir       string
 	Dir           string
@@ -316,17 +368,19 @@ type VFile struct {
 }
 
 // NewVFile creates a new VirtualFile
-func NewVFile(pwd, modded, real string, size int64, fx DataPack) *VFile {
+func NewVFile(pwd, modded, real string, size int64, decompress bool, fx DataPack) *VFile {
 	mdir := filepath.Dir(modded)
 	rdir := filepath.Dir(real)
 	vf := VFile{
-		BaseDir:   pwd,
-		Dir:       mdir,
-		ShadowDir: rdir,
-		FileName:  filepath.Base(modded),
-		Mod:       time.Now(),
-		Datasize:  size,
-		DataPack:  fx,
+		// Compressed: compressed,
+		Decompress: decompress,
+		BaseDir:    pwd,
+		Dir:        mdir,
+		ShadowDir:  rdir,
+		FileName:   filepath.Base(modded),
+		Mod:        time.Now(),
+		Datasize:   size,
+		DataPack:   fx,
 	}
 
 	return &vf
