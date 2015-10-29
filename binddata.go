@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -118,7 +119,7 @@ func (bfs *BindFS) Record() error {
 	}
 
 	//remove the file for safety and to reduce bloated ouput if file was added in list
-	os.Remove(endpoint)
+	// os.Remove(endpoint)
 
 	boutput, err := os.Create(endpoint)
 
@@ -129,7 +130,8 @@ func (bfs *BindFS) Record() error {
 	defer boutput.Close()
 
 	// var output = boutput
-	var output = bytes.NewBuffer([]byte{})
+	// var output = bytes.NewBuffer([]byte{})
+	var output = bufio.NewWriter(boutput)
 
 	//writes the library package header
 	fmt.Fprint(output, pkgHeader)
@@ -269,6 +271,9 @@ func (bfs *BindFS) Record() error {
 		fmt.Fprint(output, fmt.Sprintf(rootInit, dirContent))
 	})
 
-	io.Copy(boutput, output)
+	// io.Copy(boutput, output)
+	// log.Printf("flushing to file")
+	output.Flush()
+
 	return nil
 }
