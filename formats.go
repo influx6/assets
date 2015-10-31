@@ -427,7 +427,7 @@ func (v *VFile) RealPath() string {
 
 // Path returns the path of the file/dir
 func (v *VFile) Path() string {
-	return filepath.Join(v.BaseDir, v.Dir, v.FileName)
+	return filepath.Join(v.Dir, v.FileName)
 }
 
 // Name returns the name of the file/dir
