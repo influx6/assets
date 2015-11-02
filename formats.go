@@ -502,7 +502,7 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 	}
 
 	//its not a current path, but a subpath,so get the first piece then pass down to that
-	var parts = strings.Split(dirPath, "/")
+	var parts = strings.Split(file, "/")
 	var first = parts[0]
 
 	if vd.Subs.Has(first) {
