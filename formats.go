@@ -290,6 +290,42 @@ func (vd *VDir) Open(file string) (http.File, error) {
 	}, nil
 }
 
+// EachSub pulls through all sub-directories of this directory
+func (vd *VDir) EachSub(fx func(*VDir, string, func())) {
+	if fx == nil {
+		return
+	}
+	vd.SubMutex.RLock()
+	vd.Subs.Each(func(vd func() *VDir, path string, stop func()) {
+		fx(vd(), path, stop)
+	})
+	vd.SubMutex.RUnlock()
+}
+
+// EveryFile runs through first the current directory file and then the sub-directories files
+func (vd *VDir) EveryFile(fx func(*VFile, string)) {
+	if fx == nil {
+		return
+	}
+	vd.EachFiles(func(v *VFile, p string, _ func()) {
+		fx(v, p)
+	})
+
+	vd.EachSub(func(v *VDir, p string, _ func()) {
+		v.EveryFile(fx)
+	})
+}
+
+// EachFiles pulls through all files set withi this current directory excluding all sub-directories with control
+func (vd *VDir) EachFiles(fx func(*VFile, string, func())) {
+	if fx == nil {
+		return
+	}
+	vd.FileMutex.RLock()
+	vd.Files.Each(fx)
+	vd.FileMutex.RUnlock()
+}
+
 // GetFile gets the file set within its pathway or its sub-directories pathway
 func (vd *VDir) GetFile(file string) (*VFile, error) {
 	file = cleanPath(file)
