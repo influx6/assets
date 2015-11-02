@@ -507,7 +507,13 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 
 	if vd.Subs.Has(first) {
 		fdir := vd.Subs.Get(first)()
-		return fdir.GetDir(strings.Join(parts[1:], "/"))
+		rem := parts[1:]
+
+		if len(rem) == 0 {
+			return fdir, nil
+		}
+
+		return fdir.GetDir(strings.Join(rem, "/"))
 	}
 
 	return nil, fmt.Errorf("Dir %q not found", m)
