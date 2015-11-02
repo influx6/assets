@@ -185,21 +185,6 @@ type httpFile struct {
 	*VFile
 }
 
-// pathStripper provides a pathStripping http.FileSystem for composing a http.FileSystem
-type pathStripper struct {
-	strip string
-	fs    http.FileSystem
-}
-
-// StripFS creates a new pathStripper http.FileSystem,to auto-strip requests path
-func StripFS(s string, fs http.FileSystem) *pathStripper {
-	ps := pathStripper{
-		strip: s,
-		fs:    fs,
-	}
-	return &ps
-}
-
 // VTConfig provides a configuration for VTemplates
 type VTConfig struct {
 	VDir  *VDir //the root virtual directory to use
@@ -210,67 +195,38 @@ type VTConfig struct {
 type VTemplates struct {
 	*VTConfig
 	rw     sync.RWMutex
-	dirs   map[string]*VDir
-	drw    sync.RWMutex
-	loaded map[*VDir]*template.Template
+	loaded map[string]*template.Template
 }
 
 // NewVTemplates will loadup templates from the giving root virtual directory
 func NewVTemplates(config *VTConfig) *VTemplates {
 	vt := VTemplates{
 		VTConfig: config,
-		loaded:   make(map[*VDir]*template.Template),
-		dirs:     make(map[string]*VDir),
+		loaded:   make(map[string]*template.Template),
 	}
 
 	return &vt
 }
 
 // Load loads up the giving template from the given directory,if its an empty path,it uses the root directory itself
-func (v *VTemplates) Load(dir, name string, ext string, delims []string) (*template.Template, error) {
-	var tl *VDir
+func (v *VTemplates) Load(name string, ext string, fileList, delims []string) (*template.Template, error) {
+	if len(fileList) == 0 {
+		return nil, fmt.Errorf("Empty File Lists")
+	}
+
+	var tl *template.Template
 	var ok bool
-	var err error
 
 	v.rw.RLock()
-	tl, ok = v.dirs[dir]
+	tl, ok = v.loaded[name]
 	v.rw.RUnlock()
 
 	if ok {
 		if !v.Debug {
-			v.drw.RLock()
-			defer v.drw.RUnlock()
-			return v.loaded[tl], nil
+			return tl, nil
 		}
 	}
 
-	if tl == nil {
-		tl, err = v.VDir.GetDir(dir)
-
-		if err != nil {
-			return nil, err
-		}
-
-		v.rw.Lock()
-		v.dirs[dir] = tl
-		v.rw.Unlock()
-	}
-
-	tlm, err := VirtualTemplates(tl, name, ext, delims)
-
-	if err != nil {
-		return nil, err
-	}
-
-	v.drw.Lock()
-	v.loaded[tl] = tlm
-	v.drw.Unlock()
-
-	return tlm, nil
-}
-
-// VirtualTemplates loads up any files form a virtual directory(including subfiles that match the ext)
-func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Template, error) {
 	var tree = template.New(name)
 
 	//check if the delimiter array has content if so,set them
@@ -278,23 +234,64 @@ func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Te
 		tree.Delims(delims[0], delims[1])
 	}
 
-	var err error
-	vd.EveryFile(func(vf *VFile, path string, stop func()) {
-		if filepath.Ext(vf.Name()) == ext {
-			var contents []byte
-			var ex error
+	for _, fp := range fileList {
+		//is it a file ? if no error then use it else try a directory
+		vf, err := v.VDir.GetFile(fp)
 
-			contents, ex = vf.Data()
+		if err == nil {
+			_, err = LoadVirtualTemplateFile(vf, tree)
 
-			if ex != nil {
-				err = ex
-				stop()
-				return
+			if err != nil {
+				return nil, err
 			}
 
-			tl := tree.New(vf.Name())
+		} else {
+			vd, err := v.VDir.GetDir(fp)
 
-			_, ex = tl.Parse(string(contents))
+			if err != nil {
+				return nil, err
+			}
+
+			err = LoadVirtualTemplateDir(tree, vd, name, ext)
+
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	v.rw.Lock()
+	v.loaded[name] = tree
+	v.rw.Unlock()
+
+	return tree, nil
+}
+
+// LoadVirtualTemplateFile loads up a virtualfile into a template
+func LoadVirtualTemplateFile(vf *VFile, tree *template.Template) (*template.Template, error) {
+	var contents []byte
+	var ex error
+
+	contents, ex = vf.Data()
+
+	if ex != nil {
+		return nil, ex
+	}
+
+	tl := tree.New(vf.Name())
+
+	tl, ex = tl.Parse(string(contents))
+
+	return tl, ex
+}
+
+// LoadVirtualTemplateDir loads a tree with the files from a given virtual directory
+func LoadVirtualTemplateDir(tree *template.Template, vd *VDir, name, ext string) error {
+	var err error
+
+	vd.EveryFile(func(vf *VFile, path string, stop func()) {
+		if filepath.Ext(vf.Name()) == ext {
+			_, ex := LoadVirtualTemplateFile(vf, tree)
 
 			if ex != nil {
 				err = ex
@@ -304,23 +301,21 @@ func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Te
 		}
 	})
 
-	return tree, err
+	return err
 }
 
-// Open strips the given path and gives that off to the internal http.FileSystem
-func (s *pathStripper) Open(file string) (http.File, error) {
-	file = cleanPath(file)
-	parts := strings.Split(file, "/")
-
-	if len(parts) <= 1 {
-		return s.fs.Open(file)
+// VirtualTemplates loads up any files form a virtual directory(including subfiles that match the ext)
+func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Template, error) {
+	var tree = template.New(name)
+	//check if the delimiter array has content if so,set them
+	if len(delims) > 0 && len(delims) >= 2 {
+		tree.Delims(delims[0], delims[1])
 	}
 
-	if parts[0] == filepath.Clean(s.strip) {
-		parts = parts[1:]
+	if err := LoadVirtualTemplateDir(tree, vd, name, ext); err != nil {
+		return nil, err
 	}
-
-	return s.fs.Open(strings.Join(parts, "/"))
+	return tree, nil
 }
 
 // VDir defines a virtual directory structure
@@ -437,8 +432,15 @@ func (vd *VDir) EachFile(fx func(*VFile, string, func())) {
 	vd.FileMutex.RUnlock()
 }
 
+// ErrEmptyDirPath is returned when the path giving a GetDir is empty ""
+var ErrEmptyDirPath = errors.New("EmptyPath: Provided empty dir path")
+
 // GetFile gets the file set within its pathway or its sub-directories pathway
 func (vd *VDir) GetFile(file string) (*VFile, error) {
+	if file == "" {
+		return nil, fmt.Errorf("FilePath is empty")
+	}
+
 	file = cleanPath(file)
 	//grab the base name again,just incase we dealing with a directory like path eg doc/box/file.go
 	basename := filepath.Base(file)
@@ -448,26 +450,28 @@ func (vd *VDir) GetFile(file string) (*VFile, error) {
 
 	dir, err := vd.GetDir(file)
 
-	if err != nil {
+	if err != nil && err == ErrEmptyDirPath {
+		dir = vd
+	} else {
 		return nil, err
 	}
 
 	if dir == vd {
 		// log.Print("in self: %s", vd.Files)
 
-		var file *VFile
+		var vfile *VFile
 
 		vd.FileMutex.RLock()
 		if vd.Files.Has(basename) {
-			file = vd.Files.Get(basename)
+			vfile = vd.Files.Get(basename)
 		}
 		vd.FileMutex.RUnlock()
 
-		if file == nil {
-			return nil, os.ErrNotExist
+		if vfile == nil {
+			return nil, fmt.Errorf("File %q not found", file)
 		}
 
-		return file, nil
+		return vfile, nil
 	}
 
 	return dir.GetFile(basename)
@@ -476,7 +480,7 @@ func (vd *VDir) GetFile(file string) (*VFile, error) {
 // GetDir loads the path if available and returns the VDir corresponding to that path
 func (vd *VDir) GetDir(m string) (*VDir, error) {
 	if m == "" {
-		return nil, os.ErrNotExist
+		return nil, ErrEmptyDirPath
 	}
 
 	vd.SubMutex.RLock()
@@ -515,7 +519,7 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 		return fdir.GetDir(strings.Join(parts[1:], "/"))
 	}
 
-	return nil, os.ErrNotExist
+	return nil, fmt.Errorf("Dir %q not found", m)
 }
 
 // AddFile adds a virtual file into the virtual directory
@@ -749,14 +753,14 @@ func (c DirCollector) Clone() DirCollector {
 // GetFile gets the VFile for the specific file if existing
 func (c DirCollector) GetFile(path string) (*VFile, error) {
 	if path == "" {
-		return nil, os.ErrNotExist
+		return nil, fmt.Errorf("File %q not found", path)
 	}
 
 	dirPath, file := filepath.Split(cleanPath(path))
 
 	dir, err := c.GetDir(dirPath)
 	if err != nil {
-		return nil, os.ErrNotExist
+		return nil, err
 	}
 
 	return dir.GetFile(file)
@@ -765,7 +769,7 @@ func (c DirCollector) GetFile(path string) (*VFile, error) {
 // GetDir gets the given directory path and returns a VirtualDirectory
 func (c DirCollector) GetDir(dir string) (*VDir, error) {
 	if dir == "" {
-		return nil, os.ErrNotExist
+		return nil, fmt.Errorf("Dir %q not found", dir)
 	}
 
 	dir = cleanPath(dir)
@@ -792,7 +796,7 @@ func (c DirCollector) GetDir(dir string) (*VDir, error) {
 		return c.Get(first).GetDir(strings.Join(parts[1:], "/"))
 	}
 
-	return nil, os.ErrNotExist
+	return nil, fmt.Errorf("Dir %q not found", dir)
 }
 
 // Root gets the root path found in the list,either a "." or a "/"
