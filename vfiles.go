@@ -33,6 +33,75 @@ func StripFS(s string, fs http.FileSystem) *pathStripper {
 	return &ps
 }
 
+// VTConfig provides a configuration for VTemplates
+type VTConfig struct {
+	VDir  *VDir //the root virtual directory to use
+	Debug bool  //defines wether templates will get reloaded or just returned
+}
+
+// VTemplates provides a manager for handling loading of html templates from virtual directory files
+type VTemplates struct {
+	*VTConfig
+	rw     sync.RWMutex
+	dirs   map[string]*VDir
+	drw    sync.RWMutex
+	loaded map[*VDir]*template.Template
+}
+
+// NewVTemplates will loadup templates from the giving root virtual directory
+func NewVTemplates(config *VTConfig) *VTemplates {
+	vt := VTemplates{
+		VTConfig: config,
+		loaded:   make(map[*VDir]*template.Template),
+		dirs:     make(map[string]*VDir),
+	}
+
+	return &vt
+}
+
+// Load loads up the giving template from the given directory,if its an empty path,it uses the root directory itself
+func (v *VTemplates) Load(dir, name string, ext string, delims []string) (*template.Template, error) {
+	var tl *VDir
+	var ok bool
+	var err error
+
+	v.rw.RLock()
+	tl, ok = v.dirs[dir]
+	v.rw.RUnlock()
+
+	if ok {
+		if !v.Debug {
+			v.drw.RLock()
+			defer v.drw.RUnlock()
+			return v.loaded[tl], nil
+		}
+	}
+
+	if tl == nil {
+		tl, err = v.VDir.GetDir(dir)
+
+		if err != nil {
+			return nil, err
+		}
+
+		v.rw.Lock()
+		v.dirs[dir] = tl
+		v.rw.Unlock()
+	}
+
+	tlm, err := VirtualTemplates(tl, name, ext, delims)
+
+	if err != nil {
+		return nil, err
+	}
+
+	v.drw.Lock()
+	v.loaded[tl] = tlm
+	v.drw.Unlock()
+
+	return tlm, nil
+}
+
 // VirtualTemplates loads up any files form a virtual directory(including subfiles that match the ext)
 func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Template, error) {
 	var tree = template.New(name)
