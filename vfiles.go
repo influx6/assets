@@ -213,6 +213,22 @@ func (vd *VDir) Readdir(count int) ([]os.FileInfo, error) {
 	return files, nil
 }
 
+// // HandleFile handles a http request for a specific file
+// func (vd *VDir) HandleFile(file string, res http.ResponseWriter, req *http.Request) error {
+// 	vf, err := vd.Open(file)
+//
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	if vf.Compressed {
+// 		res.Header().Add("Content-Encoding", "gzip")
+// 	}
+//
+// 	http.ServeContent(res, req, vf.Name(), vf.ModTime(), vf)
+// 	return nil
+// }
+
 // Open meets the http.FileSystem interface requirements
 func (vd *VDir) Open(file string) (http.File, error) {
 	vf, err := vd.GetFile(file)
@@ -370,7 +386,7 @@ type DataPack func(*VFile) ([]byte, error)
 
 // VFile or virtual file for provide a virtual file info
 type VFile struct {
-	// Compressed    bool
+	Compressed    bool
 	Decompress    bool
 	ShadowDir     string
 	BaseDir       string
@@ -384,11 +400,11 @@ type VFile struct {
 }
 
 // NewVFile creates a new VirtualFile
-func NewVFile(pwd, modded, real string, size int64, decompress bool, fx DataPack) *VFile {
+func NewVFile(pwd, modded, real string, size int64, compressed, decompress bool, fx DataPack) *VFile {
 	mdir := filepath.Dir(modded)
 	rdir := filepath.Dir(real)
 	vf := VFile{
-		// Compressed: compressed,
+		Compressed: compressed,
 		Decompress: decompress,
 		BaseDir:    pwd,
 		Dir:        mdir,

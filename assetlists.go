@@ -109,6 +109,8 @@ func BuildAssetPath(base string, files []os.FileInfo, dirs *TreeMapWriter, patht
 	// ws.Add(1)
 	// defer ws.Done()
 
+	pathtree.Tree.Flush()
+
 	for _, pitem := range files {
 
 		//get the file path using the provided base

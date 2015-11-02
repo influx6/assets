@@ -218,7 +218,7 @@ func (bfs *BindFS) Record() error {
 					filreadFunc = comfileRead
 				}
 
-				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, size, !bfs.config.NoDecompression, filreadFunc)
+				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, size, bfs.config.Gzipped, !bfs.config.NoDecompression, filreadFunc)
 			} else {
 				//production mode is active,we need to load the file contents
 
@@ -259,7 +259,7 @@ func (bfs *BindFS) Record() error {
 					format = fmt.Sprintf(prodRead, fmt.Sprintf("`%s`", bu))
 				}
 
-				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, n, !bfs.config.NoDecompression, format)
+				output = fmt.Sprintf(debugFile, cleanPwd, modded, real, n, bfs.config.Gzipped, !bfs.config.NoDecompression, format)
 			}
 
 			data = append(data, output)

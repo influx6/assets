@@ -112,7 +112,7 @@ import (
 `
 
 	debugFile = `
-		dir.AddFile(NewVFile(%q,%q,%q,%d,%t,%s))
+		dir.AddFile(NewVFile(%q,%q,%q,%d,%t,%t,%s))
 	`
 
 	prodRead = `func(v *VFile) ([]byte,error) {
@@ -536,7 +536,7 @@ type DataPack func(*VFile) ([]byte, error)
 
 // VFile or virtual file for provide a virtual file info
 type VFile struct {
-	// Compressed    bool
+	Compressed    bool
 	Decompress    bool
 	ShadowDir     string
 	BaseDir       string
@@ -550,11 +550,11 @@ type VFile struct {
 }
 
 // NewVFile creates a new VirtualFile
-func NewVFile(pwd, modded, real string, size int64, decompress bool, fx DataPack) *VFile {
+func NewVFile(pwd, modded, real string, size int64, compressed, decompress bool, fx DataPack) *VFile {
 	mdir := filepath.Dir(modded)
 	rdir := filepath.Dir(real)
 	vf := VFile{
-		// Compressed: compressed,
+		Compressed: compressed,
 		Decompress: decompress,
 		BaseDir:    pwd,
 		Dir:        mdir,
