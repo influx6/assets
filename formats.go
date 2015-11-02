@@ -269,10 +269,7 @@ func (v *VTemplates) Load(name string, ext string, fileList, delims []string) (*
 
 // LoadVirtualTemplateFile loads up a virtualfile into a template
 func LoadVirtualTemplateFile(vf *VFile, tree *template.Template) (*template.Template, error) {
-	var contents []byte
-	var ex error
-
-	contents, ex = vf.Data()
+	contents, ex := vf.Data()
 
 	if ex != nil {
 		return nil, ex
@@ -432,9 +429,6 @@ func (vd *VDir) EachFile(fx func(*VFile, string, func())) {
 	vd.FileMutex.RUnlock()
 }
 
-// ErrEmptyDirPath is returned when the path giving a GetDir is empty ""
-var ErrEmptyDirPath = errors.New("EmptyPath: Provided empty dir path")
-
 // GetFile gets the file set within its pathway or its sub-directories pathway
 func (vd *VDir) GetFile(file string) (*VFile, error) {
 	if file == "" {
@@ -444,21 +438,15 @@ func (vd *VDir) GetFile(file string) (*VFile, error) {
 	file = cleanPath(file)
 	//grab the base name again,just incase we dealing with a directory like path eg doc/box/file.go
 	basename := filepath.Base(file)
-	// dirPath := filepath.Dir(file)
+	dirPath := filepath.Dir(file)
 
-	// log.Printf("dir: %s name: %s", dirPath, basename)
+	dir, err := vd.GetDir(dirPath)
 
-	dir, err := vd.GetDir(file)
-
-	if err != nil && err == ErrEmptyDirPath {
-		dir = vd
-	} else {
+	if err != nil {
 		return nil, err
 	}
 
 	if dir == vd {
-		// log.Print("in self: %s", vd.Files)
-
 		var vfile *VFile
 
 		vd.FileMutex.RLock()
@@ -476,6 +464,9 @@ func (vd *VDir) GetFile(file string) (*VFile, error) {
 
 	return dir.GetFile(basename)
 }
+
+// ErrEmptyDirPath is returned when the path giving a GetDir is empty ""
+var ErrEmptyDirPath = errors.New("EmptyPath: Provided empty dir path")
 
 // GetDir loads the path if available and returns the VDir corresponding to that path
 func (vd *VDir) GetDir(m string) (*VDir, error) {
@@ -604,14 +595,14 @@ func (v *VFile) Readdir(count int) ([]os.FileInfo, error) {
 // Data returns the data captured within
 func (v *VFile) Data() ([]byte, error) {
 	if v.DataPack == nil {
-		return v.processedPack, nil
+		return nil, nil
 	}
 
-	if v.cache && v.processedPack != nil {
-		// if v.processedPack != nil {
-		return v.processedPack, nil
-		// }
-	}
+	// if v.cache && v.processedPack != nil {
+	// 	// if v.processedPack != nil {
+	// 	return v.processedPack, nil
+	// 	// }
+	// }
 
 	pack, err := v.DataPack(v)
 
@@ -619,7 +610,7 @@ func (v *VFile) Data() ([]byte, error) {
 		return nil, err
 	}
 
-	v.processedPack = pack
+	// v.processedPack = pack
 
 	return pack, nil
 }
