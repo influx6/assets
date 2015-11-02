@@ -3,6 +3,7 @@ package assets
 import (
 	"bytes"
 	"errors"
+	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,6 +31,44 @@ func StripFS(s string, fs http.FileSystem) *pathStripper {
 		fs:    fs,
 	}
 	return &ps
+}
+
+// VirtualTemplates loads up any files form a virtual directory(including subfiles that match the ext)
+func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Template, error) {
+	var tree = template.New(name)
+
+	//check if the delimiter array has content if so,set them
+	if len(delims) > 0 && len(delims) >= 2 {
+		tree.Delims(delims[0], delims[1])
+	}
+
+	var err error
+	vd.EveryFile(func(vf *VFile, path string, stop func()) {
+		if filepath.Ext(vf.Name()) == ext {
+			var contents []byte
+			var ex error
+
+			contents, ex = vf.Data()
+
+			if ex != nil {
+				err = ex
+				stop()
+				return
+			}
+
+			tl := tree.New(vf.Name())
+
+			_, ex = tl.Parse(string(contents))
+
+			if ex != nil {
+				err = ex
+				stop()
+				return
+			}
+		}
+	})
+
+	return tree, err
 }
 
 // Open strips the given path and gives that off to the internal http.FileSystem
@@ -99,7 +138,7 @@ func (vd *VDir) Readdir(count int) ([]os.FileInfo, error) {
 	var total = count
 	var files []os.FileInfo
 
-	vd.Files.Each(func(v *VFile, _ string, stop func()) {
+	vd.EachFile(func(v *VFile, _ string, stop func()) {
 		if total <= 0 {
 			stop()
 			return
@@ -138,13 +177,13 @@ func (vd *VDir) EachSub(fx func(*VDir, string, func())) {
 	vd.SubMutex.RUnlock()
 }
 
-// EveryFile runs through first the current directory file and then the sub-directories files
-func (vd *VDir) EveryFile(fx func(*VFile, string)) {
+// EveryFile runs through first the current directory files and then the sub-directories files
+func (vd *VDir) EveryFile(fx func(*VFile, string, func())) {
 	if fx == nil {
 		return
 	}
-	vd.EachFiles(func(v *VFile, p string, _ func()) {
-		fx(v, p)
+	vd.EachFile(func(v *VFile, p string, sx func()) {
+		fx(v, p, sx)
 	})
 
 	vd.EachSub(func(v *VDir, p string, _ func()) {
@@ -152,8 +191,8 @@ func (vd *VDir) EveryFile(fx func(*VFile, string)) {
 	})
 }
 
-// EachFiles pulls through all files set withi this current directory excluding all sub-directories with control
-func (vd *VDir) EachFiles(fx func(*VFile, string, func())) {
+// EachFile pulls through all files set withi this current directory excluding all sub-directories with control
+func (vd *VDir) EachFile(fx func(*VFile, string, func())) {
 	if fx == nil {
 		return
 	}
