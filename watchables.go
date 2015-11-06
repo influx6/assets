@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/fsnotify.v1"
+	"github.com/go-fsnotify/fsnotify"
 	// "github.com/howeyc/fsnotify"
 )
 
