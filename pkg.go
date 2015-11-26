@@ -18,10 +18,19 @@ func SanitizeDuplicates(b []string) []string {
 	return b
 }
 
+func GetPackageDir(pkgname string) (string, error) {
+	pkg, err := build.Import(pkgname, "", 0)
+
+	if err != nil {
+		return "", err
+	}
+
+	return pkg.Dir, nil
+}
+
 func getPackageLists(pkgname string, paths []string) ([]string, error) {
 	pkg, err := build.Import(pkgname, "", 0)
 
-	// log.Printf("package found: %s", paths)
 	if err != nil {
 		return nil, err
 	}

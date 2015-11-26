@@ -835,6 +835,8 @@ func cleanPath(dir string) string {
 		return dir
 	}
 
+	dir = strings.Replace(dir, "\\", "/", -1)
+
 	if dir[0] == '/' {
 		dir = dir[1:]
 	}
