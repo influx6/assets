@@ -107,6 +107,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"fmt"
 )
 
 `
@@ -986,7 +987,7 @@ func cleanPath(dir string) string {
 	}
 
 	dir = strings.Replace(dir, "\\", "/", -1)
-	
+
 	if dir[0] == '/' {
 		dir = dir[1:]
 	}
