@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 )
@@ -28,6 +29,7 @@ type BindFSConfig struct {
 	Production      bool          // to enable production mode as default
 	ValidPath       PathValidator //use to filter allowed paths
 	Mux             PathMux       //use to mutate path look
+	Ignore          *regexp.Regexp
 }
 
 // BindFS provides the struct for creating and updating a go file containing static assets from a directory
@@ -48,6 +50,10 @@ func NewBindFS(config *BindFSConfig) (*BindFS, error) {
 
 	(config).ValidPath = func(path string, in os.FileInfo) bool {
 		if strings.Contains(path, ".git") {
+			return false
+		}
+
+		if config.Ignore != nil && config.Ignore.MatchString(path) {
 			return false
 		}
 
