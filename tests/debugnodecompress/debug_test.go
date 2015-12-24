@@ -33,4 +33,12 @@ func TestVirtualDir(t *testing.T) {
 		flux.FatalFailed(t, "incorrect assets/tests/lock.md content, expected length %d got %d", 182, len(data))
 	}
 
+	if _, err := RootDirectory.GetFile("/fixtures/base/basic.tmpl"); err != nil {
+		flux.FatalFailed(t, "Unable to get File /fixtures/base/basic.tmpl file: %s", err)
+	}
+
+	tom, _ := RootDirectory.GetDir("/fixtures")
+	if _, err := tom.GetFile("/base/basic.tmpl"); err != nil {
+		flux.FatalFailed(t, "Unable to get File /base/basic.tmpl file: %s", err)
+	}
 }

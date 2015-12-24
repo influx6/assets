@@ -1,15 +1,17 @@
 //Auto-generated from github.com/influx6/assets
 // DO NOT CHANGE
 
-// Package debug provides an auto-generated static embeding of data files within the specific directory C:\Users\Flux\Lab\go\cmd\src\github.com\influx6\assets
+// Package debug provides an auto-generated static embeding of data files within the specific directory /home/alex/local/cmd/src/github.com/influx6/assets
 package debug
 
   
+
 import (
 	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
@@ -18,10 +20,6 @@ import (
 	"sync"
 	"time"
 )
-	
-// RootDirectory defines a directory root for these virtual files
-var RootDirectory = NewDirCollector()
-
 
 // httpFile represents a basic http.FileSystem valid file
 type httpFile struct {
@@ -29,35 +27,134 @@ type httpFile struct {
 	*VFile
 }
 
-// pathStripper provides a pathStripping http.FileSystem for composing a http.FileSystem
-type pathStripper struct {
-	strip string
-	fs    http.FileSystem
+// VTConfig provides a configuration for VTemplates
+type VTConfig struct {
+	VDir  *VDir //the root virtual directory to use
+	Debug bool  //defines wether templates will get reloaded or just returned
 }
 
-// StripFS creates a new pathStripper http.FileSystem,to auto-strip requests path
-func StripFS(s string, fs http.FileSystem) *pathStripper {
-	ps := pathStripper{
-		strip: s,
-		fs:    fs,
-	}
-	return &ps
+// VTemplates provides a manager for handling loading of html templates from virtual directory files
+type VTemplates struct {
+	*VTConfig
+	rw     sync.RWMutex
+	loaded map[string]*template.Template
 }
 
-// Open strips the given path and gives that off to the internal http.FileSystem
-func (s *pathStripper) Open(file string) (http.File, error) {
-	file = cleanPath(file)
-	parts := strings.Split(file, "/")
-
-	if len(parts) <= 1 {
-		return s.fs.Open(file)
+// NewVTemplates will loadup templates from the giving root virtual directory
+func NewVTemplates(config *VTConfig) *VTemplates {
+	vt := VTemplates{
+		VTConfig: config,
+		loaded:   make(map[string]*template.Template),
 	}
 
-	if parts[0] == filepath.Clean(s.strip) {
-		parts = parts[1:]
+	return &vt
+}
+
+// Load loads up the giving template from the given directory,if its an empty path,it uses the root directory itself
+func (v *VTemplates) Load(name string, ext string, fileList, delims []string) (*template.Template, error) {
+	if len(fileList) == 0 {
+		return nil, fmt.Errorf("Empty File Lists")
 	}
 
-	return s.fs.Open(strings.Join(parts, "/"))
+	var tl *template.Template
+	var ok bool
+
+	v.rw.RLock()
+	tl, ok = v.loaded[name]
+	v.rw.RUnlock()
+
+	if ok {
+		if !v.Debug {
+			return tl, nil
+		}
+	}
+
+	var tree = template.New(name)
+
+	//check if the delimiter array has content if so,set them
+	if len(delims) > 0 && len(delims) >= 2 {
+		tree.Delims(delims[0], delims[1])
+	}
+
+	for _, fp := range fileList {
+		//is it a file ? if no error then use it else try a directory
+		vf, err := v.VDir.GetFile(fp)
+
+		if err == nil {
+			_, err = LoadVirtualTemplateFile(vf, tree)
+
+			if err != nil {
+				return nil, err
+			}
+
+		} else {
+			vd, err := v.VDir.GetDir(fp)
+
+			if err != nil {
+				return nil, err
+			}
+
+			err = LoadVirtualTemplateDir(tree, vd, name, ext)
+
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	v.rw.Lock()
+	v.loaded[name] = tree
+	v.rw.Unlock()
+
+	return tree, nil
+}
+
+// LoadVirtualTemplateFile loads up a virtualfile into a template
+func LoadVirtualTemplateFile(vf *VFile, tree *template.Template) (*template.Template, error) {
+	contents, ex := vf.Data()
+
+	if ex != nil {
+		return nil, ex
+	}
+
+	tl := tree.New(vf.Name())
+
+	tl, ex = tl.Parse(string(contents))
+
+	return tl, ex
+}
+
+// LoadVirtualTemplateDir loads a tree with the files from a given virtual directory
+func LoadVirtualTemplateDir(tree *template.Template, vd *VDir, name, ext string) error {
+	var err error
+
+	vd.EveryFile(func(vf *VFile, path string, stop func()) {
+		if filepath.Ext(vf.Name()) == ext {
+			_, ex := LoadVirtualTemplateFile(vf, tree)
+
+			if ex != nil {
+				err = ex
+				stop()
+				return
+			}
+		}
+	})
+
+	return err
+}
+
+// VirtualTemplates loads up any files form a virtual directory(including subfiles that match the ext)
+func VirtualTemplates(vd *VDir, name, ext string, delims []string) (*template.Template, error) {
+	var tree = template.New(name)
+	//check if the delimiter array has content if so,set them
+	if len(delims) > 0 && len(delims) >= 2 {
+		tree.Delims(delims[0], delims[1])
+	}
+
+	if err := LoadVirtualTemplateDir(tree, vd, name, ext); err != nil {
+		return nil, err
+	}
+	return tree, nil
 }
 
 // VDir defines a virtual directory structure
@@ -111,7 +208,7 @@ func (vd *VDir) Readdir(count int) ([]os.FileInfo, error) {
 	var total = count
 	var files []os.FileInfo
 
-	vd.Files.Each(func(v *VFile, _ string, stop func()) {
+	vd.EachFile(func(v *VFile, _ string, stop func()) {
 		if total <= 0 {
 			stop()
 			return
@@ -138,47 +235,90 @@ func (vd *VDir) Open(file string) (http.File, error) {
 	}, nil
 }
 
+// EachSub pulls through all sub-directories of this directory
+func (vd *VDir) EachSub(fx func(*VDir, string, func())) {
+	if fx == nil {
+		return
+	}
+	vd.SubMutex.RLock()
+	vd.Subs.Each(func(vd func() *VDir, path string, stop func()) {
+		fx(vd(), path, stop)
+	})
+	vd.SubMutex.RUnlock()
+}
+
+// EveryFile runs through first the current directory files and then the sub-directories files
+func (vd *VDir) EveryFile(fx func(*VFile, string, func())) {
+	if fx == nil {
+		return
+	}
+	vd.EachFile(func(v *VFile, p string, sx func()) {
+		fx(v, p, sx)
+	})
+
+	vd.EachSub(func(v *VDir, p string, _ func()) {
+		v.EveryFile(fx)
+	})
+}
+
+// EachFile pulls through all files set withi this current directory excluding all sub-directories with control
+func (vd *VDir) EachFile(fx func(*VFile, string, func())) {
+	if fx == nil {
+		return
+	}
+	vd.FileMutex.RLock()
+	vd.Files.Each(fx)
+	vd.FileMutex.RUnlock()
+}
+
 // GetFile gets the file set within its pathway or its sub-directories pathway
 func (vd *VDir) GetFile(file string) (*VFile, error) {
-	file = cleanPath(file)
+	if file == "" {
+		return nil, fmt.Errorf("FilePath is empty")
+	}
+
+	file = filepath.Join("/", file)
+
+	// file = cleanPath(file)
 	//grab the base name again,just incase we dealing with a directory like path eg doc/box/file.go
 	basename := filepath.Base(file)
-	// dirPath := filepath.Dir(file)
+	dirPath := filepath.Dir(file)
 
-	// log.Printf("dir: %s name: %s", dirPath, basename)
-
-	dir, err := vd.GetDir(file)
+	dir, err := vd.GetDir(dirPath)
 
 	if err != nil {
 		return nil, err
 	}
 
 	if dir == vd {
-		// log.Print("in self: %s", vd.Files)
-
-		var file *VFile
+		var vfile *VFile
 
 		vd.FileMutex.RLock()
 		if vd.Files.Has(basename) {
-			file = vd.Files.Get(basename)
+			vfile = vd.Files.Get(basename)
 		}
 		vd.FileMutex.RUnlock()
 
-		if file == nil {
-			return nil, os.ErrNotExist
+		if vfile == nil {
+			return nil, fmt.Errorf("File %q not found", file)
 		}
 
-		return file, nil
+		return vfile, nil
 	}
 
 	return dir.GetFile(basename)
 }
 
+// ErrEmptyDirPath is returned when the path giving a GetDir is empty ""
+var ErrEmptyDirPath = errors.New("EmptyPath: Provided empty dir path")
+
 // GetDir loads the path if available and returns the VDir corresponding to that path
 func (vd *VDir) GetDir(m string) (*VDir, error) {
 	if m == "" {
-		return nil, os.ErrNotExist
+		return nil, ErrEmptyDirPath
 	}
+
+	// m = filepath.Join("/", m)
 
 	vd.SubMutex.RLock()
 	defer vd.SubMutex.RUnlock()
@@ -208,15 +348,21 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 	}
 
 	//its not a current path, but a subpath,so get the first piece then pass down to that
-	var parts = strings.Split(dirPath, "/")
+	var parts = strings.Split(file, "/")
 	var first = parts[0]
 
 	if vd.Subs.Has(first) {
 		fdir := vd.Subs.Get(first)()
-		return fdir.GetDir(strings.Join(parts[1:], "/"))
+		rem := parts[1:]
+
+		if len(rem) == 0 {
+			return fdir, nil
+		}
+
+		return fdir.GetDir(strings.Join(rem, "/"))
 	}
 
-	return nil, os.ErrNotExist
+	return nil, fmt.Errorf("Dir %q not found", m)
 }
 
 // AddFile adds a virtual file into the virtual directory
@@ -236,7 +382,7 @@ type DataPack func(*VFile) ([]byte, error)
 
 // VFile or virtual file for provide a virtual file info
 type VFile struct {
-	// Compressed    bool
+	Compressed    bool
 	Decompress    bool
 	ShadowDir     string
 	BaseDir       string
@@ -250,11 +396,11 @@ type VFile struct {
 }
 
 // NewVFile creates a new VirtualFile
-func NewVFile(pwd, modded, real string, size int64, decompress bool, fx DataPack) *VFile {
+func NewVFile(pwd, modded, real string, size int64, compressed, decompress bool, fx DataPack) *VFile {
 	mdir := filepath.Dir(modded)
 	rdir := filepath.Dir(real)
 	vf := VFile{
-		// Compressed: compressed,
+		Compressed: compressed,
 		Decompress: decompress,
 		BaseDir:    pwd,
 		Dir:        mdir,
@@ -275,7 +421,7 @@ func (v *VFile) RealPath() string {
 
 // Path returns the path of the file/dir
 func (v *VFile) Path() string {
-	return filepath.Join(v.BaseDir, v.Dir, v.FileName)
+	return filepath.Join(v.Dir, v.FileName)
 }
 
 // Name returns the name of the file/dir
@@ -301,14 +447,14 @@ func (v *VFile) Readdir(count int) ([]os.FileInfo, error) {
 // Data returns the data captured within
 func (v *VFile) Data() ([]byte, error) {
 	if v.DataPack == nil {
-		return v.processedPack, nil
+		return nil, nil
 	}
 
-	if v.cache && v.processedPack != nil {
-		// if v.processedPack != nil {
-		return v.processedPack, nil
-		// }
-	}
+	// if v.cache && v.processedPack != nil {
+	// 	// if v.processedPack != nil {
+	// 	return v.processedPack, nil
+	// 	// }
+	// }
 
 	pack, err := v.DataPack(v)
 
@@ -316,7 +462,7 @@ func (v *VFile) Data() ([]byte, error) {
 		return nil, err
 	}
 
-	v.processedPack = pack
+	// v.processedPack = pack
 
 	return pack, nil
 }
@@ -450,14 +596,14 @@ func (c DirCollector) Clone() DirCollector {
 // GetFile gets the VFile for the specific file if existing
 func (c DirCollector) GetFile(path string) (*VFile, error) {
 	if path == "" {
-		return nil, os.ErrNotExist
+		return nil, fmt.Errorf("FilePath %q is empty", path)
 	}
 
-	dirPath, file := filepath.Split(cleanPath(path))
+	dirPath, file := filepath.Split(path)
 
 	dir, err := c.GetDir(dirPath)
 	if err != nil {
-		return nil, os.ErrNotExist
+		return nil, err
 	}
 
 	return dir.GetFile(file)
@@ -466,18 +612,24 @@ func (c DirCollector) GetFile(path string) (*VFile, error) {
 // GetDir gets the given directory path and returns a VirtualDirectory
 func (c DirCollector) GetDir(dir string) (*VDir, error) {
 	if dir == "" {
-		return nil, os.ErrNotExist
-	}
-
-	dir = cleanPath(dir)
-
-	if dir == "." || dir == "/" {
-		return c.Root(), nil
+		return nil, fmt.Errorf("Dir path %q is empty", dir)
 	}
 
 	if c.Has(dir) {
 		return c.Get(dir), nil
 	}
+
+	cdir := cleanPath(dir)
+
+	if cdir == "." || cdir == "/" {
+		return c.Root(), nil
+	}
+
+	if c.Has(cdir) {
+		return c.Get(cdir), nil
+	}
+
+	dir = cdir
 
 	dirPath, _ := filepath.Split(dir)
 	dirPath = cleanPath(dirPath)
@@ -493,7 +645,11 @@ func (c DirCollector) GetDir(dir string) (*VDir, error) {
 		return c.Get(first).GetDir(strings.Join(parts[1:], "/"))
 	}
 
-	return nil, os.ErrNotExist
+	if c.Has("/" + first) {
+		return c.Get("/" + first).GetDir(strings.Join(parts[1:], "/"))
+	}
+
+	return nil, fmt.Errorf("Dir %q not found", dir)
 }
 
 // Root gets the root path found in the list,either a "." or a "/"
@@ -685,6 +841,8 @@ func cleanPath(dir string) string {
 		return dir
 	}
 
+	dir = strings.Replace(dir, "\\", "/", -1)
+
 	if dir[0] == '/' {
 		dir = dir[1:]
 	}
@@ -702,17 +860,77 @@ func cleanPath(dir string) string {
 	return dir
 }
 
+func readEData(v *VFile, data []byte) ([]byte, error) {
+	// reader, err := gzip.NewReader(strings.NewReader(data))
+	reader, err := gzip.NewReader(bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to: %q\n", v.Name(), v.Path(), err)
+	}
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, reader)
+	clerr := reader.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to gzip reader error: %q\n", v.Name(), v.Path(), err)
+	}
+
+	if clerr != nil {
+		return nil, clerr
+	}
+
+	return buf.Bytes(), nil
+}
+
+func readVData(v *VFile, data []byte) ([]byte, error) {
+	return data, nil
+}
+
+// RootDirectory defines a directory root for these virtual files
+var RootDirectory = NewDirCollector()
+
+
+func readData(v *VFile,data []byte)([]byte,error){
+	if false {
+		return readVData(v,data)
+	}
+	
+	return readEData(v,data)
+}
+
 func init(){
 
-  RootDirectory.Set("fixtures/layouts",func() *VDir{
-    var dir = NewVDir("fixtures/layouts","fixtures/layouts","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/fixtures/layouts",false)
+  RootDirectory.Set("/tests/prodnodecompress",func() *VDir{
+    var dir = NewVDir("/tests/prodnodecompress","../tests/prodnodecompress","/home/alex/local/cmd/src/github.com/influx6/assets/tests/prodnodecompress",false)
 
     // register the sub-directories
     
 
     // register the files
     
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","fixtures/layouts/basic.tmpl","fixtures/layouts/basic.tmpl",364,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/prodnodecompress/prod.go","../tests/prodnodecompress/prod.go",413982,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/prodnodecompress/prod_test.go","../tests/prodnodecompress/prod_test.go",1095,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -742,55 +960,190 @@ func init(){
 
 func init(){
 
-  RootDirectory.Set("tests",func() *VDir{
-    var dir = NewVDir("tests","tests","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/tests",false)
+  RootDirectory.Set("/vfiles",func() *VDir{
+    var dir = NewVDir("/vfiles","../vfiles","/home/alex/local/cmd/src/github.com/influx6/assets/vfiles",false)
+
+    // register the sub-directories
+    
+
+    // register the files
+    
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/vfiles/vfiles.go","../vfiles/vfiles.go",18244,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/vfiles/vfiles_test.go","../vfiles/vfiles_test.go",4132,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+    return dir
+  }())
+
+}
+
+
+func init(){
+
+  RootDirectory.Set("/fixtures/base",func() *VDir{
+    var dir = NewVDir("/fixtures/base","../fixtures/base","/home/alex/local/cmd/src/github.com/influx6/assets/fixtures/base",false)
+
+    // register the sub-directories
+    
+
+    // register the files
+    
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/fixtures/base/basic.tmpl","../fixtures/base/basic.tmpl",364,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/fixtures/base/index.tmpl","../fixtures/base/index.tmpl",181,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+    return dir
+  }())
+
+}
+
+
+func init(){
+
+  RootDirectory.Set("/fixtures/includes",func() *VDir{
+    var dir = NewVDir("/fixtures/includes","../fixtures/includes","/home/alex/local/cmd/src/github.com/influx6/assets/fixtures/includes",false)
+
+    // register the sub-directories
+    
+
+    // register the files
+    
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/fixtures/includes/index.tmpl","../fixtures/includes/index.tmpl",80,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+    return dir
+  }())
+
+}
+
+
+func init(){
+
+  RootDirectory.Set("/tests",func() *VDir{
+    var dir = NewVDir("/tests","../tests","/home/alex/local/cmd/src/github.com/influx6/assets/tests",false)
 
     // register the sub-directories
     
 	dir.AddDirectory("debug",func() *VDir{
-		return RootDirectory.Get("tests/debug")
-	})
-
-
-
-	dir.AddDirectory("debugnodecompress",func() *VDir{
-		return RootDirectory.Get("tests/debugnodecompress")
+		return RootDirectory.Get("/tests/debug")
 	})
 
 
 
 	dir.AddDirectory("prod",func() *VDir{
-		return RootDirectory.Get("tests/prod")
+		return RootDirectory.Get("/tests/prod")
 	})
 
 
 
-	dir.AddDirectory("prodnodecompression",func() *VDir{
-		return RootDirectory.Get("tests/prodnodecompression")
+	dir.AddDirectory("prodnodecompress",func() *VDir{
+		return RootDirectory.Get("/tests/prodnodecompress")
 	})
 
 
 
     // register the files
     
-
-    return dir
-  }())
-
-}
-
-
-func init(){
-
-  RootDirectory.Set("tests/debugnodecompress",func() *VDir{
-    var dir = NewVDir("tests/debugnodecompress","tests/debugnodecompress","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/tests/debugnodecompress",false)
-
-    // register the sub-directories
-    
-
-    // register the files
-    
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","tests/debugnodecompress/debug_test.go","tests/debugnodecompress/debug_test.go",929,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/generate.go","../tests/generate.go",1489,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -820,15 +1173,37 @@ func init(){
 
 func init(){
 
-  RootDirectory.Set("tests/prodnodecompression",func() *VDir{
-    var dir = NewVDir("tests/prodnodecompression","tests/prodnodecompression","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/tests/prodnodecompression",false)
+  RootDirectory.Set("/tests/debug",func() *VDir{
+    var dir = NewVDir("/tests/debug","../tests/debug","/home/alex/local/cmd/src/github.com/influx6/assets/tests/debug",false)
 
     // register the sub-directories
     
 
     // register the files
     
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","tests/prodnodecompression/prod_test.go","tests/prodnodecompression/prod_test.go",928,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/debug/debug.go","../tests/debug/debug.go",36157,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/debug/debug_test.go","../tests/debug/debug_test.go",1095,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -859,25 +1234,31 @@ func init(){
 func init(){
 
   RootDirectory.Set("/",func() *VDir{
-    var dir = NewVDir("/",".","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets",true)
+    var dir = NewVDir("/","..","/home/alex/local/cmd/src/github.com/influx6/assets",true)
 
     // register the sub-directories
     
 	dir.AddDirectory("fixtures",func() *VDir{
-		return RootDirectory.Get("fixtures")
+		return RootDirectory.Get("/fixtures")
 	})
 
 
 
 	dir.AddDirectory("tests",func() *VDir{
-		return RootDirectory.Get("tests")
+		return RootDirectory.Get("/tests")
+	})
+
+
+
+	dir.AddDirectory("vfiles",func() *VDir{
+		return RootDirectory.Get("/vfiles")
 	})
 
 
 
     // register the files
     
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets",".travis.yml",".travis.yml",63,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/templates.go","../templates.go",7311,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -899,7 +1280,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","assetlists.go","assetlists.go",7235,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/assetlists.go","../assetlists.go",7259,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -921,7 +1302,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","assets.go","assets.go",2649,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/assets.go","../assets.go",2649,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -943,7 +1324,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","templates.go","templates.go",7311,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/assets_test.go","../assets_test.go",4577,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -965,7 +1346,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","vfiles.go","vfiles.go",13848,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/errors.go","../errors.go",632,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -987,7 +1368,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","vim.md","vim.md",5,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/formats.go","../formats.go",1927,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1009,7 +1390,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","binddata.go","binddata.go",7161,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/pkg.go","../pkg.go",1572,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1031,7 +1412,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","formats.go","formats.go",16653,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/vim.md","../vim.md",5,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1053,7 +1434,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","readme.md","readme.md",4460,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/functions.go","../functions.go",421,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1075,7 +1456,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","stringwriter.go","stringwriter.go",452,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/readme.md","../readme.md",4466,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1097,7 +1478,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","vfiles_test.go","vfiles_test.go",3706,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/utils.go","../utils.go",3843,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1119,7 +1500,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","watchables.go","watchables.go",3780,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/watchables.go","../watchables.go",3791,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1141,7 +1522,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","assets_test.go","assets_test.go",4577,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/.travis.yml","../.travis.yml",63,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1163,7 +1544,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","errors.go","errors.go",632,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/binddata.go","../binddata.go",8845,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1185,7 +1566,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","functions.go","functions.go",421,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/safetrees.go","../safetrees.go",3349,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1207,73 +1588,7 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","pkg.go","pkg.go",1457,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","binddata_test.go","binddata_test.go",1768,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","safetrees.go","safetrees.go",3349,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","utils.go","utils.go",3714,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/stringwriter.go","../stringwriter.go",452,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1303,139 +1618,25 @@ func init(){
 
 func init(){
 
-  RootDirectory.Set("fixtures/includes",func() *VDir{
-    var dir = NewVDir("fixtures/includes","fixtures/includes","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/fixtures/includes",false)
-
-    // register the sub-directories
-    
-
-    // register the files
-    
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","fixtures/includes/index.tmpl","fixtures/includes/index.tmpl",80,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-    return dir
-  }())
-
-}
-
-
-func init(){
-
-  RootDirectory.Set("tests/debug",func() *VDir{
-    var dir = NewVDir("tests/debug","tests/debug","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/tests/debug",false)
-
-    // register the sub-directories
-    
-
-    // register the files
-    
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","tests/debug/debug_test.go","tests/debug/debug_test.go",929,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-    return dir
-  }())
-
-}
-
-
-func init(){
-
-  RootDirectory.Set("tests/prod",func() *VDir{
-    var dir = NewVDir("tests/prod","tests/prod","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/tests/prod",false)
-
-    // register the sub-directories
-    
-
-    // register the files
-    
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","tests/prod/prod_test.go","tests/prod/prod_test.go",928,false,func(v *VFile) ([]byte, error) {
-			fo, err := os.Open(v.RealPath())
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			defer fo.Close()
-
-			var buf bytes.Buffer
-			gz := gzip.NewWriter(&buf)
-
-			_, err = io.Copy(gz, fo)
-			gz.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-			}
-
-			return buf.Bytes(), nil
-		}))
-	
-
-    return dir
-  }())
-
-}
-
-
-func init(){
-
-  RootDirectory.Set("fixtures",func() *VDir{
-    var dir = NewVDir("fixtures","fixtures","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/fixtures",false)
+  RootDirectory.Set("/fixtures",func() *VDir{
+    var dir = NewVDir("/fixtures","../fixtures","/home/alex/local/cmd/src/github.com/influx6/assets/fixtures",false)
 
     // register the sub-directories
     
 	dir.AddDirectory("base",func() *VDir{
-		return RootDirectory.Get("fixtures/base")
+		return RootDirectory.Get("/fixtures/base")
 	})
 
 
 
 	dir.AddDirectory("includes",func() *VDir{
-		return RootDirectory.Get("fixtures/includes")
+		return RootDirectory.Get("/fixtures/includes")
 	})
 
 
 
 	dir.AddDirectory("layouts",func() *VDir{
-		return RootDirectory.Get("fixtures/layouts")
+		return RootDirectory.Get("/fixtures/layouts")
 	})
 
 
@@ -1451,15 +1652,15 @@ func init(){
 
 func init(){
 
-  RootDirectory.Set("fixtures/base",func() *VDir{
-    var dir = NewVDir("fixtures/base","fixtures/base","C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets/fixtures/base",false)
+  RootDirectory.Set("/fixtures/layouts",func() *VDir{
+    var dir = NewVDir("/fixtures/layouts","../fixtures/layouts","/home/alex/local/cmd/src/github.com/influx6/assets/fixtures/layouts",false)
 
     // register the sub-directories
     
 
     // register the files
     
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","fixtures/base/basic.tmpl","fixtures/base/basic.tmpl",364,false,func(v *VFile) ([]byte, error) {
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/fixtures/layouts/basic.tmpl","../fixtures/layouts/basic.tmpl",364,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
@@ -1481,7 +1682,45 @@ func init(){
 		}))
 	
 
-		dir.AddFile(NewVFile("C:/Users/Flux/Lab/go/cmd/src/github.com/influx6/assets","fixtures/base/index.tmpl","fixtures/base/index.tmpl",181,false,func(v *VFile) ([]byte, error) {
+    return dir
+  }())
+
+}
+
+
+func init(){
+
+  RootDirectory.Set("/tests/prod",func() *VDir{
+    var dir = NewVDir("/tests/prod","../tests/prod","/home/alex/local/cmd/src/github.com/influx6/assets/tests/prod",false)
+
+    // register the sub-directories
+    
+
+    // register the files
+    
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/prod/prod.go","../tests/prod/prod.go",173236,true,false,func(v *VFile) ([]byte, error) {
+			fo, err := os.Open(v.RealPath())
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			defer fo.Close()
+
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+
+			_, err = io.Copy(gz, fo)
+			gz.Close()
+
+			if err != nil {
+				return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+			}
+
+			return buf.Bytes(), nil
+		}))
+	
+
+		dir.AddFile(NewVFile("/home/alex/local/cmd/src/github.com/influx6/assets/tests","/tests/prod/prod_test.go","../tests/prod/prod_test.go",1093,true,false,func(v *VFile) ([]byte, error) {
 			fo, err := os.Open(v.RealPath())
 			if err != nil {
 				return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)

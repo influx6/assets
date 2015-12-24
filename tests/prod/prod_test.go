@@ -12,13 +12,12 @@ func TestVirtualDir(t *testing.T) {
 	}
 
 	if _, err := RootDirectory.GetDir("/fixtures"); err != nil {
-		flux.FatalFailed(t, "Unable to located asset/tests dir in dirCollection")
+		flux.FatalFailed(t, "Unable to located /fixtures dir in dirCollection")
 	}
 
 	to, err := RootDirectory.GetDir("/fixtures/base")
-
 	if err != nil {
-		flux.FatalFailed(t, "Unable to located asset/tests directory: %s", err)
+		flux.FatalFailed(t, "Unable to located fixtures/base directory: %s", err)
 	}
 
 	al, err := to.GetFile("basic.tmpl")
@@ -33,4 +32,12 @@ func TestVirtualDir(t *testing.T) {
 		flux.FatalFailed(t, "incorrect assets/tests/lock.md content, expected length %d got %d", 364, len(data))
 	}
 
+	if _, err := RootDirectory.GetFile("/fixtures/base/basic.tmpl"); err != nil {
+		flux.FatalFailed(t, "Unable to get File /fixtures/base/basic.tmpl file: %s", err)
+	}
+
+	tom, _ := RootDirectory.GetDir("/fixtures")
+	if _, err := tom.GetFile("/base/basic.tmpl"); err != nil {
+		flux.FatalFailed(t, "Unable to get File /base/basic.tmpl file: %s", err)
+	}
 }

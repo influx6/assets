@@ -3,9 +3,7 @@ package assets
 import (
 	"bytes"
 	"compress/gzip"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,60 +32,60 @@ func sanitize(b []byte) []byte {
 	return bytes.Replace(b, []byte("\xEF\xBB\xBF"), []byte("`+\"\\xEF\\xBB\\xBF\"+`"), -1)
 }
 
-// readData takes a compressed gzip bytes and decompress it unless the virtual file wants no decompression
-func readData(v *VFile, data []byte) ([]byte, error) {
-	if !v.Decompress {
-		return data, nil
-	}
-	// reader, err := gzip.NewReader(strings.NewReader(data))
-	reader, err := gzip.NewReader(bytes.NewBuffer(data))
-	if err != nil {
-		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to: %q\n", v.Name(), v.Path(), err)
-	}
+// // readData takes a compressed gzip bytes and decompress it unless the virtual file wants no decompression
+// func readData(v *VFile, data []byte) ([]byte, error) {
+// 	if !v.Decompress {
+// 		return data, nil
+// 	}
+// 	// reader, err := gzip.NewReader(strings.NewReader(data))
+// 	reader, err := gzip.NewReader(bytes.NewBuffer(data))
+// 	if err != nil {
+// 		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to: %q\n", v.Name(), v.Path(), err)
+// 	}
+//
+// 	var buf bytes.Buffer
+// 	_, err = io.Copy(&buf, reader)
+// 	clerr := reader.Close()
+//
+// 	if err != nil {
+// 		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to gzip reader error: %q\n", v.Name(), v.Path(), err)
+// 	}
+//
+// 	if clerr != nil {
+// 		return nil, clerr
+// 	}
+//
+// 	return buf.Bytes(), nil
+// }
+//
+// func readGZipFile(v *VFile) ([]byte, error) {
+// 	fo, err := os.Open(v.RealPath())
+// 	if err != nil {
+// 		return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+// 	}
+//
+// 	defer fo.Close()
+//
+// 	var buf bytes.Buffer
+// 	gz := gzip.NewWriter(&buf)
+//
+// 	_, err = io.Copy(gz, fo)
+// 	gz.Close()
+//
+// 	if err != nil {
+// 		return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+// 	}
+//
+// 	return buf.Bytes(), nil
+// }
 
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, reader)
-	clerr := reader.Close()
-
-	if err != nil {
-		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to gzip reader error: %q\n", v.Name(), v.Path(), err)
-	}
-
-	if clerr != nil {
-		return nil, clerr
-	}
-
-	return buf.Bytes(), nil
-}
-
-func readGZipFile(v *VFile) ([]byte, error) {
-	fo, err := os.Open(v.RealPath())
-	if err != nil {
-		return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-	}
-
-	defer fo.Close()
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-
-	_, err = io.Copy(gz, fo)
-	gz.Close()
-
-	if err != nil {
-		return nil, fmt.Errorf("---> assets.readFile.gzip: Error gzipping file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-func readFile(v *VFile) ([]byte, error) {
-	fo, err := ioutil.ReadFile(v.RealPath())
-	if err != nil {
-		return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
-	}
-	return fo, nil
-}
+// func readFile(v *VFile) ([]byte, error) {
+// 	fo, err := ioutil.ReadFile(v.RealPath())
+// 	if err != nil {
+// 		return nil, fmt.Errorf("---> assets.readFile: Error reading file: %s at %s: %s\n", v.Name(), v.RealPath(), err)
+// 	}
+// 	return fo, nil
+// }
 
 // ByName Implement sort.Interface for []os.FileInfo based on Name()
 type ByName []os.FileInfo

@@ -1,10 +1,12 @@
-package assets
+package vfiles
 
 import (
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -213,22 +215,6 @@ func (vd *VDir) Readdir(count int) ([]os.FileInfo, error) {
 	return files, nil
 }
 
-// // HandleFile handles a http request for a specific file
-// func (vd *VDir) HandleFile(file string, res http.ResponseWriter, req *http.Request) error {
-// 	vf, err := vd.Open(file)
-//
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	if vf.Compressed {
-// 		res.Header().Add("Content-Encoding", "gzip")
-// 	}
-//
-// 	http.ServeContent(res, req, vf.Name(), vf.ModTime(), vf)
-// 	return nil
-// }
-
 // Open meets the http.FileSystem interface requirements
 func (vd *VDir) Open(file string) (http.File, error) {
 	vf, err := vd.GetFile(file)
@@ -285,7 +271,9 @@ func (vd *VDir) GetFile(file string) (*VFile, error) {
 		return nil, fmt.Errorf("FilePath is empty")
 	}
 
-	file = cleanPath(file)
+	file = filepath.Join("/", file)
+
+	// file = cleanPath(file)
 	//grab the base name again,just incase we dealing with a directory like path eg doc/box/file.go
 	basename := filepath.Base(file)
 	dirPath := filepath.Dir(file)
@@ -323,6 +311,8 @@ func (vd *VDir) GetDir(m string) (*VDir, error) {
 	if m == "" {
 		return nil, ErrEmptyDirPath
 	}
+
+	// m = filepath.Join("/", m)
 
 	vd.SubMutex.RLock()
 	defer vd.SubMutex.RUnlock()
@@ -600,10 +590,10 @@ func (c DirCollector) Clone() DirCollector {
 // GetFile gets the VFile for the specific file if existing
 func (c DirCollector) GetFile(path string) (*VFile, error) {
 	if path == "" {
-		return nil, fmt.Errorf("File %q not found", path)
+		return nil, fmt.Errorf("FilePath %q is empty", path)
 	}
 
-	dirPath, file := filepath.Split(cleanPath(path))
+	dirPath, file := filepath.Split(path)
 
 	dir, err := c.GetDir(dirPath)
 	if err != nil {
@@ -616,18 +606,24 @@ func (c DirCollector) GetFile(path string) (*VFile, error) {
 // GetDir gets the given directory path and returns a VirtualDirectory
 func (c DirCollector) GetDir(dir string) (*VDir, error) {
 	if dir == "" {
-		return nil, fmt.Errorf("Dir %q not found", dir)
-	}
-
-	dir = cleanPath(dir)
-
-	if dir == "." || dir == "/" {
-		return c.Root(), nil
+		return nil, fmt.Errorf("Dir path %q is empty", dir)
 	}
 
 	if c.Has(dir) {
 		return c.Get(dir), nil
 	}
+
+	cdir := cleanPath(dir)
+
+	if cdir == "." || cdir == "/" {
+		return c.Root(), nil
+	}
+
+	if c.Has(cdir) {
+		return c.Get(cdir), nil
+	}
+
+	dir = cdir
 
 	dirPath, _ := filepath.Split(dir)
 	dirPath = cleanPath(dirPath)
@@ -641,6 +637,11 @@ func (c DirCollector) GetDir(dir string) (*VDir, error) {
 
 	if c.Has(first) {
 		return c.Get(first).GetDir(strings.Join(parts[1:], "/"))
+	}
+
+	// Temporary fix for handling / rooted paths.
+	if c.Has("/" + first) {
+		return c.Get("/" + first).GetDir(strings.Join(parts[1:], "/"))
 	}
 
 	return nil, fmt.Errorf("Dir %q not found", dir)
@@ -852,4 +853,30 @@ func cleanPath(dir string) string {
 	}
 
 	return dir
+}
+
+func readEData(v *VFile, data []byte) ([]byte, error) {
+	// reader, err := gzip.NewReader(strings.NewReader(data))
+	reader, err := gzip.NewReader(bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to: %q\n", v.Name(), v.Path(), err)
+	}
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, reader)
+	clerr := reader.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("---> VFile.readData.error: read file %q at %q, due to gzip reader error: %q\n", v.Name(), v.Path(), err)
+	}
+
+	if clerr != nil {
+		return nil, clerr
+	}
+
+	return buf.Bytes(), nil
+}
+
+func readVData(v *VFile, data []byte) ([]byte, error) {
+	return data, nil
 }

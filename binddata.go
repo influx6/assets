@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 )
 
+var vfile = filepath.Join(os.Getenv("GOPATH"), "src/github.com/influx6/assets/vfiles/vfiles.go")
+
 // DevelopmentMode represents development mode for bfs files
 const DevelopmentMode = 0
 
@@ -34,13 +36,14 @@ type BindFSConfig struct {
 
 // BindFS provides the struct for creating and updating a go file containing static assets from a directory
 type BindFS struct {
-	config      *BindFSConfig
-	listing     *DirListing
-	mode        int64
-	endpoint    string
-	endpointDir string
-	inputDir    string
-	curDir      string
+	config       *BindFSConfig
+	listing      *DirListing
+	mode         int64
+	endpoint     string
+	endpointDir  string
+	inputDir     string
+	curDir       string
+	vfileContent string
 }
 
 // NewBindFS returns a new BindFS instance or an error if it fails to located directory
@@ -48,12 +51,26 @@ func NewBindFS(config *BindFSConfig) (*BindFS, error) {
 	vali := config.ValidPath
 	mux := config.Mux
 
+	pwd, _ := os.Getwd()
+	input := filepath.Join(pwd, config.InDir)
+	endpoint := filepath.Join(pwd, config.OutDir, config.File+".go")
+	endpointDir := filepath.Dir(endpoint)
+
 	(config).ValidPath = func(path string, in os.FileInfo) bool {
 		if strings.Contains(path, ".git") {
 			return false
 		}
 
 		if config.Ignore != nil && config.Ignore.MatchString(path) {
+			return false
+		}
+
+		if path == config.OutDir || strings.Contains(path, config.OutDir) {
+			return false
+		}
+
+		// check if this contains the endpoint directory. If so, ignore.
+		if strings.Contains(path, endpointDir) || strings.Contains(filepath.Join(pwd, path), endpointDir) {
 			return false
 		}
 
@@ -72,6 +89,9 @@ func NewBindFS(config *BindFSConfig) (*BindFS, error) {
 		if filepath.Clean(path) == "." {
 			return "/"
 		}
+
+		// fmt.Printf("path: %s clean: %s \n", path, filepath.Clean(path))
+
 		return path
 	}
 
@@ -82,8 +102,11 @@ func NewBindFS(config *BindFSConfig) (*BindFS, error) {
 	}
 
 	bf := BindFS{
-		config:  config,
-		listing: ls,
+		config:      config,
+		listing:     ls,
+		endpoint:    endpoint,
+		endpointDir: endpointDir,
+		inputDir:    input,
 	}
 
 	if config.Production {
@@ -113,15 +136,36 @@ func (bfs *BindFS) Record() error {
 	bfs.listing.Reload()
 
 	pwd, _ := os.Getwd()
-	input := filepath.Join(pwd, bfs.config.InDir)
-	endpoint := filepath.Join(pwd, bfs.config.OutDir, bfs.config.File+".go")
-	endpointDir := filepath.Dir(endpoint)
+	input := bfs.inputDir
+	endpoint := bfs.endpoint
+	endpointDir := bfs.endpointDir
 	pkgHeader := fmt.Sprintf(packageDetails, bfs.config.Package, input, bfs.config.Package)
 
 	err := os.MkdirAll(endpointDir, 0700)
 
 	if err != nil && err != os.ErrExist {
 		return err
+	}
+
+	//load the vfile content if not catched.
+	if bfs.vfileContent == "" {
+		vf, err := os.Open(vfile)
+		if err != nil {
+			return err
+		}
+
+		var vbuf bytes.Buffer
+		_, err = io.Copy(&vbuf, vf)
+		if err != nil && err != io.EOF {
+			vf.Close()
+			return err
+		}
+
+		// Close the file.
+		vf.Close()
+
+		bfs.vfileContent = strings.Replace(vbuf.String(), "package vfiles", "", -1)
+
 	}
 
 	//remove the file for safety and to reduce bloated ouput if file was added in list
@@ -135,47 +179,25 @@ func (bfs *BindFS) Record() error {
 
 	defer boutput.Close()
 
-	// var output = boutput
-	// var output = bytes.NewBuffer([]byte{})
 	var output = bufio.NewWriter(boutput)
 
 	//writes the library package header
 	fmt.Fprint(output, pkgHeader)
 
-	//writes the library imports
-	if bfs.Mode() > 0 {
-		if bfs.config.Gzipped {
-			if bfs.config.NoDecompression {
-				fmt.Fprint(output, nocomImports)
-			} else {
-				fmt.Fprint(output, comImports)
-			}
-		} else {
-			fmt.Fprint(output, nocomImports)
-		}
-	} else {
-		if bfs.config.Gzipped && bfs.config.NoDecompression {
-			fmt.Fprint(output, debugComImports)
-		} else {
-			fmt.Fprint(output, debugImports)
-		}
-	}
-
 	//writing the libraries core
+	fmt.Fprint(output, bfs.vfileContent)
 	fmt.Fprint(output, rootDir)
-	fmt.Fprint(output, structBase)
 
+	var noCompressed bool
 	if bfs.Mode() > 0 {
-		if bfs.config.Gzipped {
-			if bfs.config.NoDecompression {
-				fmt.Fprint(output, uncomFunc)
-			} else {
-				fmt.Fprint(output, comFunc)
-			}
+		if bfs.config.Gzipped && bfs.config.NoDecompression {
+			noCompressed = true
 		} else {
-			fmt.Fprint(output, uncomFunc)
+			noCompressed = false
 		}
 	}
+
+	fmt.Fprint(output, fmt.Sprintf(comFunc, noCompressed))
 
 	// log.Printf("tree: %s", bfs.listing.Listings.Tree)
 
@@ -188,6 +210,24 @@ func (bfs *BindFS) Record() error {
 		pathDir := filepath.ToSlash(filepath.Clean(dir.Dir))
 		pathAbs := filepath.ToSlash(filepath.Clean(dir.AbsDir))
 
+		if path == ".." {
+			path = "/"
+		}
+
+		// if it has a .. at the beginning, remove it.
+		if strings.HasPrefix(path, "..") {
+			path = strings.TrimPrefix(path, "..")
+		}
+
+		if modDir == ".." {
+			modDir = "/"
+		}
+
+		// if it has a .. at the beginning, remove it.
+		if strings.HasPrefix(modDir, "..") {
+			modDir = strings.TrimPrefix(modDir, "..")
+		}
+
 		//fill up the directory content
 		dirContent := fmt.Sprintf(dirRegister, path, modDir, pathDir, pathAbs, dir.root)
 
@@ -196,19 +236,37 @@ func (bfs *BindFS) Record() error {
 
 		// go through the subdirectories list and added them
 		dir.EachChild(func(child *BasicAssetTree) {
-			//add the sub-directories
-			// log.Printf("Walking Child: %s", child.AbsDir)
 			childDir := filepath.ToSlash(filepath.Clean(child.ModDir))
-			subs = append(subs, fmt.Sprintf(subRegister, filepath.Base(childDir), childDir))
+			baseChildDir := filepath.Base(childDir)
+
+			if baseChildDir == ".." {
+				baseChildDir = "/"
+			}
+
+			// if it has a .. at the beginning, remove it.
+			// if strings.HasPrefix(baseChildDir, "..") {
+			// 	baseChildDir = strings.TrimPrefix(baseChildDir, "..")
+			// }
+
+			if strings.HasPrefix(childDir, "..") {
+				childDir = strings.TrimPrefix(childDir, "..")
+			}
+
+			// if it contains the output skip
+			//add the sub-directories
+			subs = append(subs, fmt.Sprintf(subRegister, baseChildDir, childDir))
 		})
 
 		//loadup the files
 		dir.Tree.Each(func(modded, real string) {
-			// log.Printf("Walking: %s -> File: %s %s", dir.AbsDir, modded, real)
-
 			modded = filepath.ToSlash(filepath.Clean(modded))
 			real = filepath.ToSlash(filepath.Clean(real))
 			cleanPwd := filepath.ToSlash(filepath.Clean(pwd))
+
+			// if it has a .. at the beginning, remove it.
+			if strings.HasPrefix(modded, "..") {
+				modded = strings.TrimPrefix(modded, "..")
+			}
 
 			var output string
 			if bfs.Mode() == DevelopmentMode {

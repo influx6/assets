@@ -25,8 +25,8 @@ func TestListings(t *testing.T) {
 		flux.FatalFailed(t, "Unable to create asset map: %s", err.Error())
 	}
 
-	if tree.Listings.Size() <= 0 || tree.Listings.Size() > 10 {
-		flux.FatalFailed(t, "expected size to be below 10 but got %d", tree.Listings.Size())
+	if tree.Listings.Size() <= 0 || tree.Listings.Size() > 11 {
+		flux.FatalFailed(t, "expected size to be below 11 but got %d", tree.Listings.Size())
 	}
 
 	flux.LogPassed(t, "Succesfully created directory listings")
